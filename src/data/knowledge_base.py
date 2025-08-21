@@ -66,16 +66,17 @@ class KnowledgeBaseManager:
             # Try cloud configuration first
             chroma_api_key = os.getenv('CHROMADB_API_KEY')
             chroma_url = os.getenv('CHROMADB_URL', 'https://api.trychroma.com')
+            chroma_tenant = os.getenv('CHROMADB_TENANT', 'default_tenant')
+            chroma_database = os.getenv('CHROMADB_DATABASE', 'default_database')
             
             if chroma_api_key:
                 logger.info("Initializing ChromaDB cloud client")
-                # For cloud setup (when available)
+                # For cloud setup with updated API format
                 client = chromadb.HttpClient(
                     host=chroma_url,
-                    settings=chromadb.config.Settings(
-                        chroma_api_impl="chromadb.api.fastapi.FastAPI",
-                        chroma_server_auth_credentials=chroma_api_key
-                    )
+                    headers={"Authorization": f"Bearer {chroma_api_key}"},
+                    tenant=chroma_tenant,
+                    database=chroma_database
                 )
             else:
                 logger.warning("ChromaDB API key not found, using persistent local client")

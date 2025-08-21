@@ -225,3 +225,36 @@ short description: Fixed 'list' object has no attribute 'lower' error in retriev
 
 --------
 
+## Bug Fix: ChromaDB Configuration Error ✅
+Date and time: 2025-08-21
+short description: Fixed ChromaDB initialization error by updating to current API format
+
+### Issue Analysis:
+- **Error Message**: `ChromaDB initialization failed: 1 validation error for Settings chroma_server_auth_credentials extra fields not permitted (type=value_error.extra)`
+- **Root Cause**: ChromaDB updated their API format, `chroma_server_auth_credentials` parameter is deprecated
+- **Error Location**: `src/data/knowledge_base.py:63-91` in `_init_chromadb_client` function
+
+### Fix Implementation:
+- **Updated**: ChromaDB client initialization to use current API format with `headers` parameter
+- **Added**: Support for ChromaDB tenant and database configuration
+- **Replaced**: Deprecated `chroma_server_auth_credentials` with `Authorization` header format
+- **Enhanced**: Environment variable support for `CHROMADB_TENANT` and `CHROMADB_DATABASE`
+
+### Code Changes:
+- Removed deprecated `settings=chromadb.config.Settings()` approach
+- Updated to use `headers={"Authorization": f"Bearer {chroma_api_key}"}` format
+- Added tenant and database parameters for proper cloud setup
+- Updated `.env.example` with new configuration options
+
+### Technical Details:
+- The fix aligns with ChromaDB's current cloud API requirements
+- Maintains backward compatibility with local persistent client fallback
+- Added proper default values for tenant (`default_tenant`) and database (`default_database`)
+- All existing functionality preserved while fixing the configuration error
+
+### Environment Variables Added:
+- `CHROMADB_TENANT=default_tenant` - For multi-tenant ChromaDB cloud setup
+- `CHROMADB_DATABASE=default_database` - For database specification in ChromaDB cloud
+
+--------
+
