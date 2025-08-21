@@ -192,3 +192,36 @@ short description: Successfully implemented Phase 2.1 and 2.2 - Knowledge Base S
 
 --------
 
+## Bug Fix: TypeError in RAG Engine ✅
+Date and time: 2025-08-21
+short description: Fixed 'list' object has no attribute 'lower' error in retrieve_documents function
+
+### Issue Analysis:
+- **Error Location**: `src/ai/rag_engine.py:187` in `retrieve_documents` function
+- **Root Cause**: The `user_role` parameter was being passed as a list instead of string to `get_accessible_kb_types` method
+- **Error Message**: `ERROR:ai.rag_engine:Error in search_knowledge_base: 'list' object has no attribute 'lower'`
+
+### Fix Implementation:
+- **Modified**: `get_accessible_kb_types` method in `src/data/knowledge_base.py:191-217`
+- **Added**: Type validation and conversion logic to handle both string and list inputs
+- **Approach**: Defensive programming with graceful fallback to 'customer' role on invalid input
+
+### Code Changes:
+- Added `isinstance()` checks for list, string, and other data types
+- Extract first element from list if `user_role` is passed as list
+- Added warning logs for invalid inputs with proper fallback behavior
+- Maintained backward compatibility with existing string-based role passing
+
+### Technical Details:
+- The fix handles edge cases like empty lists, non-string list elements, and completely invalid types
+- Preserves existing functionality while adding robustness
+- Uses logging for debugging invalid input scenarios
+- Follows CLAUDE.md principles with clear error handling
+
+### Testing Approach:
+- The fix should resolve the runtime error when `user_role` is passed as `['associate']` or `['customer']`
+- Application should continue to work with both `'associate'` and `['associate']` inputs
+- Graceful degradation to customer role for any invalid inputs
+
+--------
+

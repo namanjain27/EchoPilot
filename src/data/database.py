@@ -10,7 +10,7 @@ from typing import List, Optional, Dict, Any
 from sqlalchemy import create_engine, Column, String, DateTime, Text, Integer, Float, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session, relationship
-from sqlalchemy.dialects.sqlite import UUID
+#from sqlalchemy.dialects.sqlite import UUID
 import json
 import logging
 

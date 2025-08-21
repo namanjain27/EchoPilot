@@ -188,19 +188,32 @@ class KnowledgeBaseManager:
             logger.error(f"Search failed in {kb_type.value}: {e}")
             return {'documents': [], 'metadatas': [], 'distances': [], 'ids': []}
     
-    def get_accessible_kb_types(self, user_role: str) -> List[KnowledgeBaseType]:
+    def get_accessible_kb_types(self, user_role) -> List[KnowledgeBaseType]:
         """
         Get knowledge base types accessible to a user role
         
         Args:
-            user_role: User role (associate/customer)
+            user_role: User role (associate/customer) - can be string or list
             
         Returns:
             List of accessible knowledge base types
         """
-        if user_role.lower() == 'associate':
+        # Handle both string and list inputs for user_role
+        if isinstance(user_role, list):
+            if len(user_role) > 0:
+                normalized_role = str(user_role[0]).lower()
+            else:
+                logger.warning("Empty user_role list provided, defaulting to customer")
+                normalized_role = 'customer'
+        elif isinstance(user_role, str):
+            normalized_role = user_role.lower()
+        else:
+            logger.warning(f"Invalid user_role type: {type(user_role)}, defaulting to customer")
+            normalized_role = 'customer'
+        
+        if normalized_role == 'associate':
             return [KnowledgeBaseType.INTERNAL, KnowledgeBaseType.GENERAL]
-        else:  # customer
+        else:  # customer or any other role
             return [KnowledgeBaseType.GENERAL]
     
     def search_all_accessible(self, 

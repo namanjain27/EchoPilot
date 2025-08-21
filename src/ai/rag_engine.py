@@ -3,11 +3,10 @@ RAG (Retrieval Augmented Generation) engine for EchoPilot
 Handles knowledge retrieval and response generation using Gemini
 """
 
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 import logging
 from .gemini_client import GeminiClient
-from ..data.knowledge_base import KnowledgeBaseManager, KnowledgeBaseType
-from ..auth.role_manager import UserRole
+from src.data.knowledge_base import KnowledgeBaseManager
 
 # Configure logging
 logger = logging.getLogger(__name__)
