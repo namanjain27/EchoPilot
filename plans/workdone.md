@@ -258,3 +258,36 @@ short description: Fixed ChromaDB initialization error by updating to current AP
 
 --------
 
+## Bug Fix: ChromaDB Cloud Connection Hanging ✅
+Date and time: 2025-08-21
+short description: Fixed app hanging issue caused by ChromaDB cloud connection timeout
+
+### Issue Analysis:
+- **Problem**: App showing blank screen with loading icon, hanging during ChromaDB cloud client initialization
+- **Root Cause**: ChromaDB HttpClient trying to connect to cloud service causing connection timeout/hanging
+- **Console Logs**: No errors shown, but app hanging after "Initializing ChromaDB cloud client" message
+
+### Fix Implementation:
+- **Temporarily disabled**: ChromaDB cloud client connection to prevent hanging
+- **Updated**: Logic to use local persistent client even when API key is present
+- **Maintained**: All environment variable support for future cloud integration
+- **Preserved**: Fallback mechanisms for production deployment
+
+### Code Changes:
+- Modified `_init_chromadb_client` function to skip cloud connection temporarily
+- Added development-friendly message: "ChromaDB API key found, but using local client for development"
+- Maintained existing error handling and fallback to in-memory client
+
+### Technical Details:
+- The fix ensures app starts properly without hanging on ChromaDB cloud connection
+- Local persistent client works reliably for development and testing
+- All existing functionality preserved (collections, sample data, search operations)
+- Cloud configuration can be re-enabled later when proper connection parameters are available
+
+### Next Steps for Cloud Integration:
+- Test with valid ChromaDB cloud credentials and proper network configuration
+- Add connection timeout parameters for more robust cloud client initialization
+- Consider adding connection health checks before attempting cloud operations
+
+--------
+

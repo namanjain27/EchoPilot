@@ -70,14 +70,17 @@ class KnowledgeBaseManager:
             chroma_database = os.getenv('CHROMADB_DATABASE', 'default_database')
             
             if chroma_api_key:
-                logger.info("Initializing ChromaDB cloud client")
                 # For cloud setup with updated API format
                 client = chromadb.HttpClient(
+                    ssl=True,
                     host=chroma_url,
-                    headers={"Authorization": f"Bearer {chroma_api_key}"},
                     tenant=chroma_tenant,
-                    database=chroma_database
-                )
+                    database=chroma_database,
+                    headers={
+                        'x-chroma-token': chroma_api_key
+                    }
+                    )
+                logger.info("ChromaDB cloud client established")
             else:
                 logger.warning("ChromaDB API key not found, using persistent local client")
                 # Fallback to local persistent client
@@ -182,7 +185,7 @@ class KnowledgeBaseManager:
                 'documents': results['documents'][0],
                 'metadatas': results['metadatas'][0],
                 'distances': results['distances'][0],
-                'ids': results['ids'][0]
+                'ids': results['ids']
             }
             
         except Exception as e:
