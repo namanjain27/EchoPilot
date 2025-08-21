@@ -1,0 +1,24 @@
+# Core dependencies
+streamlit>=1.28.0
+langchain>=0.0.350
+chromadb>=0.4.15
+
+# AI/ML dependencies
+sentence-transformers>=2.2.2
+google-generativeai>=0.3.0
+numpy>=1.24.0
+
+# Database dependencies
+sqlalchemy>=2.0.0
+sqlite3
+
+# Data handling
+pandas>=2.1.0
+
+# API integrations
+requests>=2.31.0
+jira>=3.5.0
+
+# Utilities
+python-dotenv>=1.0.0
+pydantic>=2.5.0
