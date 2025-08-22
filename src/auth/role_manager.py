@@ -19,7 +19,7 @@ class RoleManager:
     def __init__(self):
         self.current_role: Optional[UserRole] = None
     
-    def set_role(self, role: UserRole) -> None:
+    def set_role(self, role: Optional[UserRole]) -> None:
         """Set the current user role"""
         self.current_role = role
     

@@ -113,20 +113,19 @@ def render_sidebar():
         
         # Update role if changed
         if selected_role != current_role:
-            if selected_role:
-                st.session_state.session_handler.set_user_role(selected_role)
-                # Role transition detected - switching to role-specific chat history
-                st.rerun()
+            st.session_state.session_handler.set_user_role(selected_role)
+            # Role transition detected - switching to role-specific chat history
+            st.rerun()
         
         # Display role info
         if current_role:
-            st.success(f"Logged in as: **{current_role.value.title()}**")
+            #st.success(f"Logged in as: **{current_role.value.title()}**")
             
             # Show accessible knowledge bases
             role_manager = st.session_state.session_handler.get_role_manager()
             accessible_kbs = role_manager.get_accessible_knowledge_bases()
             
-            st.info(f"Access to: {', '.join(accessible_kbs)} knowledge base(s)")
+            #st.info(f"Access to: {', '.join(accessible_kbs)} knowledge base(s)")
         
         st.divider()
         
@@ -371,9 +370,9 @@ def render_file_upload_section():
     # File uploader
     uploaded_files = st.file_uploader(
         "Choose files to upload",
-        type=['txt', 'md', 'json', 'csv', 'pdf', 'docx', 'doc', 'jpg', 'jpeg', 'png', 'bmp', 'tiff'],
+        #type=['txt', 'md', 'json', 'csv', 'pdf', 'docx', 'doc', 'jpg', 'jpeg', 'png', 'bmp', 'tiff'],
         accept_multiple_files=True,
-        help="Supported formats: TXT, MD, JSON, CSV, PDF, Word documents, Images (JPG, PNG, etc.)"
+        help="Supported formats: PDF, Word docs, Images, TXT, MD, JSON, CSV"
     )
     
     if uploaded_files:

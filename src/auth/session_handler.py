@@ -38,7 +38,7 @@ class SessionHandler:
         if 'session_id' not in st.session_state:
             st.session_state.session_id = None
     
-    def set_user_role(self, role: UserRole) -> None:
+    def set_user_role(self, role: Optional[UserRole]) -> None:
         """Set user role in session and role manager"""
         st.session_state.user_role = role
         self.role_manager.set_role(role)
