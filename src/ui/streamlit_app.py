@@ -6,12 +6,14 @@ Customer Success Copilot with role-based access
 import streamlit as st
 import sys
 import os
+from typing import List, Tuple
 
 # Add src to path for imports
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from auth import UserRole, SessionHandler
 from ai import IntentClassifier, RAGEngine
+from data import FileUploadManager, UploadConfig, KnowledgeBaseManager
 
 
 def initialize_app():
@@ -32,6 +34,16 @@ def initialize_app():
     
     if 'rag_engine' not in st.session_state:
         st.session_state.rag_engine = RAGEngine()
+    
+    # Initialize file upload manager
+    if 'file_upload_manager' not in st.session_state:
+        # Get KB manager from RAG engine
+        kb_manager = st.session_state.rag_engine.kb_manager
+        upload_config = UploadConfig(
+            max_file_size_mb=float(os.getenv('MAX_FILE_SIZE_MB', '10.0')),
+            max_files_per_batch=int(os.getenv('MAX_FILES_PER_BATCH', '10'))
+        )
+        st.session_state.file_upload_manager = FileUploadManager(kb_manager, upload_config)
 
 
 def render_sidebar():
@@ -85,6 +97,11 @@ def render_sidebar():
             st.info(f"Access to: {', '.join(accessible_kbs)} knowledge base(s)")
         
         st.divider()
+        
+        # File upload section (Associates only)
+        if current_role == UserRole.ASSOCIATE:
+            render_file_upload_section()
+            st.divider()
         
         # Chat controls
         if st.button("Clear Chat History", type="secondary"):
@@ -176,6 +193,93 @@ def render_main_content():
         
         # Rerun to display new messages
         st.rerun()
+
+
+def render_file_upload_section():
+    """Render file upload section for Associates"""
+    st.subheader("📁 File Upload")
+    
+    # Knowledge base selector
+    kb_options = {
+        "Internal Knowledge Base": "internal",
+        "General Knowledge Base": "general"
+    }
+    
+    selected_kb = st.selectbox(
+        "Select Knowledge Base:",
+        options=list(kb_options.keys()),
+        help="Choose which knowledge base to add the files to"
+    )
+    
+    kb_type = kb_options[selected_kb]
+    
+    # File uploader
+    uploaded_files = st.file_uploader(
+        "Choose files to upload",
+        type=['txt', 'md', 'json', 'csv', 'pdf', 'docx', 'doc', 'jpg', 'jpeg', 'png', 'bmp', 'tiff'],
+        accept_multiple_files=True,
+        help="Supported formats: TXT, MD, JSON, CSV, PDF, Word documents, Images (JPG, PNG, etc.)"
+    )
+    
+    if uploaded_files:
+        # Show file information
+        st.write(f"📋 **{len(uploaded_files)} file(s) selected:**")
+        
+        total_size_mb = 0
+        file_info = []
+        
+        for file in uploaded_files:
+            file_size_mb = len(file.getvalue()) / (1024 * 1024)
+            total_size_mb += file_size_mb
+            file_info.append(f"• {file.name} ({file_size_mb:.2f} MB)")
+        
+        for info in file_info:
+            st.caption(info)
+        
+        st.caption(f"Total size: {total_size_mb:.2f} MB")
+        
+        # Upload button
+        if st.button("📤 Upload Files", type="primary"):
+            with st.spinner("Processing files..."):
+                # Prepare files for upload
+                files_data = []
+                for file in uploaded_files:
+                    files_data.append((file.name, file.getvalue()))
+                
+                # Process upload
+                upload_manager = st.session_state.file_upload_manager
+                results = upload_manager.upload_files(files_data, kb_type)
+                
+                # Display results
+                st.subheader("📊 Upload Results")
+                
+                successful = 0
+                failed = 0
+                total_chunks = 0
+                
+                for result in results:
+                    if result.success:
+                        successful += 1
+                        total_chunks += result.chunks_created
+                        st.success(f"✅ {result.filename}: {result.message}")
+                        if result.processing_time_seconds > 0:
+                            st.caption(f"   Processed in {result.processing_time_seconds:.2f}s")
+                    else:
+                        failed += 1
+                        st.error(f"❌ {result.filename}: {result.message}")
+                
+                # Summary
+                if successful > 0:
+                    st.success(f"🎉 Successfully uploaded {successful} file(s) creating {total_chunks} chunks in the {selected_kb.lower()}")
+                
+                if failed > 0:
+                    st.warning(f"⚠️ {failed} file(s) failed to upload")
+                
+                # Refresh the knowledge base stats
+                if successful > 0:
+                    st.info("💡 Knowledge base has been updated with new content!")
+                    # Clear the uploader by rerunning
+                    st.rerun()
 
 
 def main():

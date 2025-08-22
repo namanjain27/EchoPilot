@@ -12,6 +12,30 @@ import mimetypes
 from dataclasses import dataclass
 from datetime import datetime
 import json
+import io
+
+# Document processing imports
+try:
+    import PyPDF2
+    PDF_AVAILABLE = True
+except ImportError:
+    PDF_AVAILABLE = False
+    logger.warning("PyPDF2 not available - PDF processing disabled")
+
+try:
+    from docx import Document as DocxDocument
+    DOCX_AVAILABLE = True
+except ImportError:
+    DOCX_AVAILABLE = False
+    logger.warning("python-docx not available - Word document processing disabled")
+
+try:
+    import pytesseract
+    from PIL import Image
+    OCR_AVAILABLE = True
+except ImportError:
+    OCR_AVAILABLE = False
+    logger.warning("pytesseract or Pillow not available - OCR processing disabled")
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -49,6 +73,25 @@ class DocumentProcessor:
             '.json': self._process_json_file,
             '.csv': self._process_csv_file
         }
+        
+        # Add PDF support if available
+        if PDF_AVAILABLE:
+            self.supported_types['.pdf'] = self._process_pdf_file
+        
+        # Add Word document support if available
+        if DOCX_AVAILABLE:
+            self.supported_types['.docx'] = self._process_docx_file
+            self.supported_types['.doc'] = self._process_docx_file
+        
+        # Add image OCR support if available
+        if OCR_AVAILABLE:
+            self.supported_types.update({
+                '.jpg': self._process_image_file,
+                '.jpeg': self._process_image_file,
+                '.png': self._process_image_file,
+                '.bmp': self._process_image_file,
+                '.tiff': self._process_image_file
+            })
         
         logger.info(f"Document processor initialized with chunk_size={chunk_size}, overlap={chunk_overlap}")
     
@@ -212,6 +255,99 @@ class DocumentProcessor:
             logger.error(f"Error reading CSV file {file_path}: {e}")
             return ""
     
+    def _process_pdf_file(self, file_path: str) -> str:
+        """Process PDF file by extracting text"""
+        if not PDF_AVAILABLE:
+            logger.error("PDF processing not available - install PyPDF2")
+            return ""
+        
+        try:
+            text_content = []
+            with open(file_path, 'rb') as f:
+                pdf_reader = PyPDF2.PdfReader(f)
+                
+                for page_num, page in enumerate(pdf_reader.pages):
+                    try:
+                        page_text = page.extract_text()
+                        if page_text.strip():
+                            text_content.append(f"--- Page {page_num + 1} ---\n{page_text}")
+                    except Exception as e:
+                        logger.warning(f"Error extracting text from page {page_num + 1} in {file_path}: {e}")
+                        continue
+            
+            if not text_content:
+                logger.warning(f"No text content extracted from PDF: {file_path}")
+                return ""
+            
+            return '\n\n'.join(text_content)
+            
+        except Exception as e:
+            logger.error(f"Error reading PDF file {file_path}: {e}")
+            return ""
+    
+    def _process_docx_file(self, file_path: str) -> str:
+        """Process Word document by extracting text"""
+        if not DOCX_AVAILABLE:
+            logger.error("Word document processing not available - install python-docx")
+            return ""
+        
+        try:
+            doc = DocxDocument(file_path)
+            text_content = []
+            
+            # Extract paragraphs
+            for paragraph in doc.paragraphs:
+                if paragraph.text.strip():
+                    text_content.append(paragraph.text)
+            
+            # Extract text from tables
+            for table in doc.tables:
+                for row in table.rows:
+                    row_text = []
+                    for cell in row.cells:
+                        if cell.text.strip():
+                            row_text.append(cell.text.strip())
+                    if row_text:
+                        text_content.append(' | '.join(row_text))
+            
+            if not text_content:
+                logger.warning(f"No text content extracted from Word document: {file_path}")
+                return ""
+            
+            return '\n\n'.join(text_content)
+            
+        except Exception as e:
+            logger.error(f"Error reading Word document {file_path}: {e}")
+            return ""
+    
+    def _process_image_file(self, file_path: str) -> str:
+        """Process image file using OCR to extract text"""
+        if not OCR_AVAILABLE:
+            logger.error("OCR processing not available - install pytesseract and Pillow")
+            return ""
+        
+        try:
+            # Open and process image
+            with Image.open(file_path) as img:
+                # Convert to RGB if necessary
+                if img.mode != 'RGB':
+                    img = img.convert('RGB')
+                
+                # Perform OCR
+                extracted_text = pytesseract.image_to_string(img)
+                
+                if not extracted_text.strip():
+                    logger.warning(f"No text extracted from image: {file_path}")
+                    return ""
+                
+                # Add image metadata to extracted text
+                metadata_text = f"--- Text extracted from image: {os.path.basename(file_path)} ---\n"
+                return metadata_text + extracted_text.strip()
+                
+        except Exception as e:
+            logger.error(f"Error processing image file {file_path}: {e}")
+            return ""
+    
     def _split_text_into_chunks(self, text: str, source: str, 
                                metadata: Dict[str, Any]) -> List[DocumentChunk]:
         """Split text into overlapping chunks"""
@@ -307,8 +443,51 @@ class DocumentProcessor:
             'chunk_size': self.chunk_size,
             'chunk_overlap': self.chunk_overlap,
             'supported_extensions': list(self.supported_types.keys()),
-            'processor_version': '1.0.0'
+            'processor_version': '2.0.0',
+            'features': {
+                'pdf_support': PDF_AVAILABLE,
+                'docx_support': DOCX_AVAILABLE,
+                'ocr_support': OCR_AVAILABLE
+            }
         }
+    
+    def validate_file_type(self, file_path: str) -> Tuple[bool, str]:
+        """Validate if file type is supported
+        
+        Args:
+            file_path: Path to the file
+            
+        Returns:
+            Tuple of (is_supported, message)
+        """
+        try:
+            file_path = Path(file_path)
+            file_extension = file_path.suffix.lower()
+            
+            if file_extension in self.supported_types:
+                return True, f"File type {file_extension} is supported"
+            else:
+                supported_types = ', '.join(self.supported_types.keys())
+                return False, f"File type {file_extension} not supported. Supported types: {supported_types}"
+                
+        except Exception as e:
+            return False, f"Error validating file: {e}"
+    
+    def get_file_size_mb(self, file_path: str) -> float:
+        """Get file size in MB
+        
+        Args:
+            file_path: Path to the file
+            
+        Returns:
+            File size in MB
+        """
+        try:
+            size_bytes = os.path.getsize(file_path)
+            return size_bytes / (1024 * 1024)
+        except Exception as e:
+            logger.error(f"Error getting file size for {file_path}: {e}")
+            return 0.0
 
 
 class IngestionPipeline:
