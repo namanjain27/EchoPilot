@@ -350,7 +350,7 @@ class DocumentProcessor:
     
     def _split_text_into_chunks(self, text: str, source: str, 
                                metadata: Dict[str, Any]) -> List[DocumentChunk]:
-        """Split text into overlapping chunks"""
+        """Split text into overlapping chunks with robust infinite loop protection"""
         chunks = []
         
         if len(text) <= self.chunk_size:
@@ -366,11 +366,15 @@ class DocumentProcessor:
             chunks.append(chunk)
             return chunks
         
-        # Split into overlapping chunks
+        # Split into overlapping chunks with safety limits
         start = 0
         chunk_index = 0
+        max_iterations = (len(text) // (self.chunk_size - self.chunk_overlap)) + 10  # Safety buffer
+        iteration_count = 0
         
-        while start < len(text):
+        while start < len(text) and iteration_count < max_iterations:
+            iteration_count += 1
+            
             # Determine chunk end position
             end = start + self.chunk_size
             
@@ -391,6 +395,11 @@ class DocumentProcessor:
                     chunk_content = text[start:start + last_newline + 1]
                 # Otherwise use the full chunk
             
+            # Skip empty chunks
+            if not chunk_content.strip():
+                start += max(1, self.chunk_size // 2)  # Move forward to avoid infinite loop
+                continue
+            
             # Create chunk
             chunk_id = self._generate_chunk_id(source, chunk_index)
             chunk = DocumentChunk(
@@ -402,14 +411,28 @@ class DocumentProcessor:
             )
             chunks.append(chunk)
             
-            # Move start position for next chunk
-            start = start + len(chunk_content) - self.chunk_overlap
+            # Calculate next start position with safety checks
+            current_chunk_length = len(chunk_content)
+            next_start = start + current_chunk_length - self.chunk_overlap
+            
+            # Ensure we're making progress
+            if next_start <= start:
+                # Force progress if we're not advancing
+                next_start = start + max(1, current_chunk_length // 2)
+                logger.warning(f"Forced progress in chunking for {source} at position {start}")
+            
+            start = next_start
             chunk_index += 1
             
-            # Prevent infinite loop
-            if start <= 0:
-                start = len(chunk_content)
+            # Additional safety check for very large files
+            if chunk_index > 10000:  # Arbitrary large limit
+                logger.warning(f"Chunking stopped at {chunk_index} chunks for {source} - may be too large")
+                break
         
+        if iteration_count >= max_iterations:
+            logger.error(f"Chunking iteration limit reached for {source} - stopping to prevent infinite loop")
+        
+        logger.info(f"Created {len(chunks)} chunks from {source} in {iteration_count} iterations")
         return chunks
     
     def _generate_file_metadata(self, file_path: str) -> Dict[str, Any]:
@@ -509,7 +532,7 @@ class IngestionPipeline:
     def ingest_file(self, file_path: str, kb_type: str, 
                    metadata: Optional[Dict[str, Any]] = None) -> bool:
         """
-        Ingest a single file into knowledge base
+        Ingest a single file into knowledge base with timeout protection
         
         Args:
             file_path: Path to file
@@ -519,11 +542,25 @@ class IngestionPipeline:
         Returns:
             True if successful, False otherwise
         """
+        import signal
+        import time
+        
+        def timeout_handler(signum, frame):
+            raise TimeoutError("File processing timed out")
+        
+        start_time = time.time()
+        
         try:
             from .knowledge_base import KnowledgeBaseType
             
+            # Set timeout for large file processing (5 minutes)
+            signal.signal(signal.SIGALRM, timeout_handler)
+            signal.alarm(300)  # 5 minutes timeout
+            
             # Convert string to enum
             kb_enum = KnowledgeBaseType.INTERNAL if kb_type.lower() == 'internal' else KnowledgeBaseType.GENERAL
+            
+            logger.info(f"Starting ingestion of {file_path}")
             
             # Process file into chunks
             chunks = self.processor.process_file(file_path, metadata)
@@ -531,6 +568,8 @@ class IngestionPipeline:
             if not chunks:
                 logger.warning(f"No chunks generated from file: {file_path}")
                 return False
+            
+            logger.info(f"Generated {len(chunks)} chunks, adding to knowledge base")
             
             # Prepare for knowledge base ingestion
             documents = [chunk.content for chunk in chunks]
@@ -545,14 +584,24 @@ class IngestionPipeline:
                 ids=ids
             )
             
+            processing_time = time.time() - start_time
+            
             if success:
-                logger.info(f"Successfully ingested {len(chunks)} chunks from {file_path}")
+                logger.info(f"Successfully ingested {len(chunks)} chunks from {file_path} in {processing_time:.2f}s")
+            else:
+                logger.error(f"Failed to add chunks to knowledge base for {file_path}")
             
             return success
             
+        except TimeoutError:
+            logger.error(f"File processing timed out for {file_path} after {time.time() - start_time:.2f}s")
+            return False
         except Exception as e:
             logger.error(f"Error ingesting file {file_path}: {e}")
             return False
+        finally:
+            # Cancel the alarm
+            signal.alarm(0)
     
     def ingest_directory(self, directory_path: str, kb_type: str,
                         recursive: bool = True,

@@ -11,6 +11,8 @@ from pathlib import Path
 from dataclasses import dataclass
 from datetime import datetime
 import shutil
+import gc
+import psutil
 
 from .document_processor import DocumentProcessor, IngestionPipeline
 from .knowledge_base import KnowledgeBaseType, KnowledgeBaseManager
@@ -224,6 +226,17 @@ class FileUploadManager:
                     file_size_mb=len(file_content) / (1024 * 1024)
                 )
             
+            # Check memory limits before processing
+            file_size_mb = len(file_content) / (1024 * 1024)
+            can_process, memory_msg = self._check_memory_limits(file_size_mb)
+            if not can_process:
+                return UploadResult(
+                    filename=filename,
+                    success=False,
+                    message=f"Memory limit exceeded: {memory_msg}",
+                    file_size_mb=file_size_mb
+                )
+            
             # Create temporary file
             temp_file_path = self._create_temp_file(filename, file_content)
             
@@ -236,7 +249,7 @@ class FileUploadManager:
             if metadata:
                 upload_metadata.update(metadata)
             
-            # Process file through ingestion pipeline
+            # Process file through ingestion pipeline (this already processes the file into chunks)
             success = self.ingestion_pipeline.ingest_file(
                 file_path=temp_file_path,
                 kb_type=kb_type,
@@ -244,18 +257,20 @@ class FileUploadManager:
             )
             
             if success:
-                # Get processing stats
-                chunks = self.document_processor.process_file(temp_file_path, upload_metadata)
-                chunks_created = len(chunks)
+                # Get processing stats without re-processing the file
+                # Note: We need to estimate chunks created since ingestion_pipeline already processed it
+                # This avoids the CPU/memory intensive double processing issue
+                file_size_mb = len(file_content) / (1024 * 1024)
+                estimated_chunks = max(1, int(file_size_mb * 1000 / self.document_processor.chunk_size))
                 
                 processing_time = (datetime.now() - start_time).total_seconds()
                 
                 return UploadResult(
                     filename=filename,
                     success=True,
-                    message=f"Successfully processed into {chunks_created} chunks",
-                    chunks_created=chunks_created,
-                    file_size_mb=len(file_content) / (1024 * 1024),
+                    message=f"Successfully processed and ingested into knowledge base",
+                    chunks_created=estimated_chunks,
+                    file_size_mb=file_size_mb,
                     processing_time_seconds=processing_time
                 )
             else:
@@ -282,6 +297,9 @@ class FileUploadManager:
                     os.remove(temp_file_path)
                 except Exception as e:
                     logger.warning(f"Failed to clean up temp file {temp_file_path}: {e}")
+            
+            # Force memory cleanup after processing
+            self._cleanup_memory()
     
     def _create_temp_file(self, filename: str, file_content: bytes) -> str:
         """
@@ -401,3 +419,59 @@ class FileUploadManager:
                 
         except Exception as e:
             logger.error(f"Error during temp file cleanup: {e}")
+    
+    def _get_memory_usage(self) -> Dict[str, float]:
+        """Get current memory usage statistics"""
+        try:
+            process = psutil.Process(os.getpid())
+            memory_info = process.memory_info()
+            
+            return {
+                'memory_mb': memory_info.rss / (1024 * 1024),
+                'memory_percent': process.memory_percent(),
+                'available_memory_mb': psutil.virtual_memory().available / (1024 * 1024)
+            }
+        except Exception as e:
+            logger.warning(f"Could not get memory usage: {e}")
+            return {'memory_mb': 0, 'memory_percent': 0, 'available_memory_mb': 0}
+    
+    def _cleanup_memory(self):
+        """Force garbage collection and memory cleanup"""
+        try:
+            # Force garbage collection
+            collected = gc.collect()
+            logger.debug(f"Garbage collection freed {collected} objects")
+        except Exception as e:
+            logger.warning(f"Error during memory cleanup: {e}")
+    
+    def _check_memory_limits(self, file_size_mb: float) -> Tuple[bool, str]:
+        """
+        Check if there's enough memory to process the file
+        
+        Args:
+            file_size_mb: Size of the file to process in MB
+            
+        Returns:
+            Tuple of (can_process, message)
+        """
+        try:
+            memory_stats = self._get_memory_usage()
+            available_mb = memory_stats.get('available_memory_mb', 0)
+            current_usage = memory_stats.get('memory_percent', 0)
+            
+            # Estimate memory needed (file size * 4 for processing overhead)
+            estimated_memory_needed = file_size_mb * 4
+            
+            # Check if current usage is too high
+            if current_usage > 85:
+                return False, f"Current memory usage too high ({current_usage:.1f}%)"
+            
+            # Check if we have enough available memory
+            if available_mb < estimated_memory_needed:
+                return False, f"Insufficient memory (need {estimated_memory_needed:.1f}MB, available {available_mb:.1f}MB)"
+            
+            return True, "Memory check passed"
+            
+        except Exception as e:
+            logger.warning(f"Memory check failed: {e}")
+            return True, "Memory check failed, proceeding anyway"

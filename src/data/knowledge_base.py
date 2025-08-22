@@ -24,16 +24,53 @@ class KnowledgeBaseType(Enum):
 
 
 class SentenceTransformerEmbedding(EmbeddingFunction):
-    """Custom embedding function using sentence-transformers"""
+    """Custom embedding function using sentence-transformers with model caching"""
+    
+    # Class-level model cache to avoid reloading
+    _model_cache = {}
     
     def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
-        self.model = SentenceTransformer(model_name)
+        self.model_name = model_name
+        self.model = self._get_or_load_model(model_name)
         logger.info(f"Initialized embedding model: {model_name}")
     
+    @classmethod
+    def _get_or_load_model(cls, model_name: str):
+        """Get model from cache or load it if not cached"""
+        if model_name not in cls._model_cache:
+            logger.info(f"Loading sentence transformer model: {model_name}")
+            try:
+                cls._model_cache[model_name] = SentenceTransformer(model_name)
+                logger.info(f"Successfully loaded and cached model: {model_name}")
+            except Exception as e:
+                logger.error(f"Failed to load embedding model {model_name}: {e}")
+                raise
+        else:
+            logger.debug(f"Using cached embedding model: {model_name}")
+        
+        return cls._model_cache[model_name]
+    
     def __call__(self, input: Documents) -> Embeddings:
-        """Generate embeddings for documents"""
-        embeddings = self.model.encode(input).tolist()
-        return embeddings
+        """Generate embeddings for documents with batch processing"""
+        try:
+            # Process in smaller batches to manage memory
+            batch_size = 32  # Reasonable batch size for memory management
+            embeddings = []
+            
+            for i in range(0, len(input), batch_size):
+                batch = input[i:i + batch_size]
+                batch_embeddings = self.model.encode(batch, convert_to_tensor=False)
+                embeddings.extend(batch_embeddings.tolist())
+                
+                # Log progress for large batches
+                if len(input) > batch_size:
+                    logger.debug(f"Processed embedding batch {i//batch_size + 1}/{(len(input)-1)//batch_size + 1}")
+            
+            return embeddings
+            
+        except Exception as e:
+            logger.error(f"Error generating embeddings: {e}")
+            raise
 
 
 class KnowledgeBaseManager:
