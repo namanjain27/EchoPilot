@@ -12,7 +12,12 @@ import mimetypes
 from dataclasses import dataclass
 from datetime import datetime
 import json
-import io
+import signal
+import time
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Document processing imports
 try:
@@ -36,10 +41,6 @@ try:
 except ImportError:
     OCR_AVAILABLE = False
     logger.warning("pytesseract or Pillow not available - OCR processing disabled")
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -542,8 +543,7 @@ class IngestionPipeline:
         Returns:
             True if successful, False otherwise
         """
-        import signal
-        import time
+        
         
         def timeout_handler(signum, frame):
             raise TimeoutError("File processing timed out")

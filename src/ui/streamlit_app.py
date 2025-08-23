@@ -295,15 +295,51 @@ def render_main_content():
                 st.write(message["content"])
                 
                 # Show intent analysis if available
-                if "intent_analysis" in message:
+                if "intent_analysis" in message and message["intent_analysis"]:
                     analysis = message["intent_analysis"]
                     col1, col2, col3 = st.columns(3)
                     with col1:
-                        st.caption(f"Intent: {analysis['intent']}")
+                        intent_text = analysis.get('intent', 'unknown')
+                        if hasattr(intent_text, 'value'):
+                            intent_text = intent_text.value
+                        st.caption(f"Intent: {intent_text}")
                     with col2:
-                        st.caption(f"Urgency: {analysis['urgency']}")
+                        urgency_text = analysis.get('urgency', 'unknown')
+                        if hasattr(urgency_text, 'value'):
+                            urgency_text = urgency_text.value
+                        st.caption(f"Urgency: {urgency_text}")
                     with col3:
-                        st.caption(f"Sentiment: {analysis['sentiment']}")
+                        sentiment_text = analysis.get('sentiment', 'unknown')
+                        if hasattr(sentiment_text, 'value'):
+                            sentiment_text = sentiment_text.value
+                        st.caption(f"Sentiment: {sentiment_text}")
+                
+                # Show ticket information if available
+                if message["role"] == "assistant" and "ticket_info" in message and message["ticket_info"]:
+                    ticket = message["ticket_info"]
+                    with st.expander(f"🎫 Ticket Information - {ticket['local_ticket_id']}", expanded=False):
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.write(f"**Type:** {ticket['ticket_type'].replace('_', ' ').title()}")
+                            st.write(f"**Urgency:** {ticket['urgency'].title()}")
+                        with col2:
+                            st.write(f"**Local ID:** {ticket['local_ticket_id']}")
+                            if ticket.get('jira_issue_key'):
+                                st.write(f"**Jira Key:** {ticket['jira_issue_key']}")
+                            else:
+                                st.write("**Jira Key:** Mock ticket (development mode)")
+                
+                # Show source information if available
+                if message["role"] == "assistant" and message.get("source_count", 0) > 0:
+                    with st.expander(f"📚 Knowledge Sources ({message['source_count']})", expanded=False):
+                        sources = message.get("sources", [])
+                        for i, source in enumerate(sources[:3], 1):  # Show top 3 sources
+                            st.write(f"**Source {i}:** {source.get('knowledge_base', 'unknown')} - {source.get('source', 'unknown')}")
+                            if source.get('content'):
+                                preview = source['content'][:200] + "..." if len(source['content']) > 200 else source['content']
+                                st.write(f"*Preview:* {preview}")
+                            st.write(f"*Relevance Score:* {source.get('score', 0):.2f}")
+                            st.divider()
     
     # Chat input
     user_input = st.chat_input("Type your message here...")
@@ -313,36 +349,54 @@ def render_main_content():
         user_message = {"role": "user", "content": user_input}
         st.session_state.session_handler.add_message_for_current_role(user_message)
         
-        # Analyze intent
-        intent_analysis = st.session_state.intent_classifier.analyze_message(user_input)
-        
-        # Get accessible knowledge bases
-        role_manager = st.session_state.session_handler.get_role_manager()
-        accessible_kbs = role_manager.get_accessible_knowledge_bases()
-        
-        # Get current role's chat history for context
+        # Get current user role and chat history for context
+        #   current_role = st.session_state.session_handler.get_current_user_role().value
         chat_history = st.session_state.session_handler.get_current_role_chat_history()
         
-        # Generate response using RAG with chat history
-        rag_response = st.session_state.rag_engine.search_knowledge_base(
-            user_input, accessible_kbs, chat_history
+        # Process query with intelligent ticket creation
+        response_data = st.session_state.rag_engine.process_query_with_ticket_creation(
+            query=user_input,
+            user_role=current_role,
+            chat_history=chat_history
         )
         
-        # Create assistant response
-        assistant_content = f"{rag_response['response']}\n\n"
-        assistant_content += f"*Based on {', '.join(rag_response['knowledge_bases_used'])} knowledge base(s)*"
+        # Build enhanced assistant response
+        assistant_content = response_data['response']
         
+        # Add knowledge base attribution
+        if response_data.get('knowledge_bases_used'):
+            assistant_content += f"\n\n*Based on {', '.join(response_data['knowledge_bases_used'])} knowledge base(s)*"
+        
+        # Add ticket information if ticket was created
+        if response_data.get('ticket_created') and response_data.get('ticket_info'):
+            ticket_info = response_data['ticket_info']
+            # Note: ticket creation details are already included in the response content
+            pass  # Ticket details already included in the enhanced response
+        
+        # Add validation information for invalid complaints (for transparency)
+        if response_data.get('validation_info') and not response_data['validation_info'].get('is_valid'):
+            validation = response_data['validation_info']
+            if validation.get('confidence', 0) > 0.7:  # Only show for high-confidence validations
+                assistant_content += f"\n\n*Note: This appears to be a question rather than a complaint (confidence: {validation['confidence']:.1%})*"
+        
+        # Create assistant message with comprehensive metadata
         assistant_message = {
             "role": "assistant", 
             "content": assistant_content,
-            "intent_analysis": {
-                "intent": intent_analysis.intent.value,
-                "urgency": intent_analysis.urgency.value,
-                "sentiment": intent_analysis.sentiment.value
-            }
+            "intent_analysis": response_data.get('intent_analysis', {}),
+            "ticket_info": response_data.get('ticket_info'),
+            "validation_info": response_data.get('validation_info'),
+            "sources": response_data.get('sources', []),
+            "source_count": response_data.get('source_count', 0)
         }
         
         st.session_state.session_handler.add_message_for_current_role(assistant_message)
+        
+        # Show success notification for ticket creation
+        if response_data.get('ticket_created'):
+            ticket_info = response_data['ticket_info']
+            ticket_type = ticket_info['ticket_type'].replace('_', ' ').title()
+            st.success(f"✅ {ticket_type} ticket created: {ticket_info['local_ticket_id']}")
         
         # Rerun to display new messages
         st.rerun()

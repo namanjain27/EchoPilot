@@ -6,7 +6,12 @@ Handles knowledge retrieval and response generation using Gemini
 from typing import List, Dict, Any
 import logging
 from .gemini_client import GeminiClient
+from .tool_framework import ToolFramework, ToolCall
+from .complaint_validator import ComplaintValidator
+from .intent_classifier import IntentClassifier
 from src.data.knowledge_base import KnowledgeBaseManager
+from src.integrations.ticket_manager import TicketManager
+from src.integrations.jira_client import JiraClient
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -28,9 +33,18 @@ class RAGEngine:
             logger.error(f"Failed to initialize knowledge base: {e}")
             self.knowledge_base = None
         
-        logger.info("RAG Engine initialized")
+        # Initialize supporting components
+        self.intent_classifier = IntentClassifier()
+        self.ticket_manager = TicketManager()
+        self.jira_client = JiraClient()
+        
+        # Initialize advanced components
+        self.complaint_validator = ComplaintValidator(self, self.gemini_client)
+        self.tool_framework = ToolFramework(self, self.ticket_manager, self.jira_client)
+        
+        logger.info("RAG Engine initialized with ticket creation capabilities")
     
-    def retrieve_documents(self, query: str, user_role: str, top_k: int = 5) -> List[Dict[str, Any]]:
+    def retrieve_documents(self, query: str, user_role: str, top_k: int = 5, limit: int = None) -> List[Dict[str, Any]]:
         """
         Retrieve relevant documents from knowledge bases based on user role
         
@@ -71,9 +85,10 @@ class RAGEngine:
                         "metadata": metadata
                     })
             
-            # Sort by score and return top_k
+            # Sort by score and return top_k (use limit if specified)
             documents.sort(key=lambda x: x['score'], reverse=True)
-            return documents[:top_k]
+            return_count = limit if limit is not None else top_k
+            return documents[:return_count]
             
         except Exception as e:
             logger.error(f"Error retrieving documents: {e}")
@@ -249,3 +264,150 @@ class RAGEngine:
         except Exception as e:
             logger.error(f"Failed to get knowledge base stats: {e}")
             return {"status": "error", "error": str(e)}
+    
+    def process_query_with_ticket_creation(self, query: str, user_role: str, chat_history: List[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """
+        Process user query with intelligent ticket creation for complaints and service requests
+        
+        Args:
+            query: User query
+            user_role: User role (customer/associate)
+            chat_history: Previous conversation history
+            
+        Returns:
+            Comprehensive response with ticket creation if applicable
+        """
+        try:
+            # Step 1: Classify intent and sentiment
+            intent_analysis = self.intent_classifier.classify_intent(query)
+            intent = intent_analysis.get("intent", "query")
+            urgency = intent_analysis.get("urgency", "medium")
+            sentiment = intent_analysis.get("sentiment", "neutral")
+            
+            # Step 2: Get regular RAG response first
+            rag_response = self.search_knowledge_base(query, user_role, chat_history)
+            base_response = rag_response["response"]
+            
+            # Step 3: Check if ticket creation is needed
+            should_create_ticket = self.tool_framework.should_create_ticket(intent, user_role, query)
+            
+            ticket_info = None
+            ticket_created = False
+            validation_info = None
+            
+            if should_create_ticket:
+                # Step 4: Handle complaint validation (if it's a complaint)
+                if intent == "complaint":
+                    validation_result = self.complaint_validator.validate_complaint(query, user_role)
+                    validation_info = validation_result
+                    
+                    if not validation_result["is_valid"]:
+                        # Invalid complaint - provide helpful response instead of creating ticket
+                        helpful_response = self.complaint_validator.generate_invalid_complaint_response(query, validation_result)
+                        return {
+                            "response": helpful_response,
+                            "original_rag_response": base_response,
+                            "intent_analysis": intent_analysis,
+                            "ticket_created": False,
+                            "ticket_info": None,
+                            "validation_info": validation_info,
+                            "sources": rag_response.get("sources", []),
+                            "knowledge_bases_used": rag_response.get("knowledge_bases_used", [])
+                        }
+                
+                # Step 5: Create ticket for valid complaints/service requests
+                ticket_type = self.tool_framework.determine_ticket_type(intent, user_role, query)
+                
+                if ticket_type:
+                    # Extract title from query (first sentence or first 50 characters)
+                    title = self._extract_title_from_query(query)
+                    
+                    # Prepare ticket data
+                    ticket_data = {
+                        "title": title,
+                        "description": f"User query: {query}",
+                        "urgency": urgency,
+                        "sentiment": sentiment,
+                        "user_query": query,
+                        "user_role": user_role
+                    }
+                    
+                    # Create the ticket using tool framework
+                    tool_call = ToolCall(tool_type=ticket_type, parameters=ticket_data)
+                    ticket_result = self.tool_framework.execute_tool(tool_call, user_role)
+                    
+                    if ticket_result.get("success"):
+                        ticket_created = True
+                        ticket_info = {
+                            "local_ticket_id": ticket_result.get("local_ticket_id"),
+                            "jira_issue_key": ticket_result.get("jira_issue_key"),
+                            "ticket_type": intent,
+                            "urgency": urgency,
+                            "sentiment": sentiment
+                        }
+                        
+                        # Enhance response with ticket information
+                        ticket_message = f"\n\n**Ticket Created:** I've created a {intent.replace('_', ' ')} ticket for you.\n"
+                        ticket_message += f"- Local Ticket ID: {ticket_info['local_ticket_id']}\n"
+                        if ticket_info['jira_issue_key']:
+                            ticket_message += f"- Jira Issue Key: {ticket_info['jira_issue_key']}\n"
+                        ticket_message += f"- Urgency: {urgency.title()}\n"
+                        ticket_message += "You can reference this ticket ID for future inquiries about this matter."
+                        
+                        enhanced_response = base_response + ticket_message
+                    else:
+                        # Ticket creation failed - still provide helpful response
+                        enhanced_response = base_response + f"\n\nI attempted to create a ticket for your {intent.replace('_', ' ')}, but encountered an issue: {ticket_result.get('error', 'Unknown error')}. Please contact support directly if you need immediate assistance."
+                else:
+                    enhanced_response = base_response
+            else:
+                # No ticket needed - return regular RAG response
+                enhanced_response = base_response
+            
+            return {
+                "response": enhanced_response,
+                "original_rag_response": base_response,
+                "intent_analysis": intent_analysis,
+                "ticket_created": ticket_created,
+                "ticket_info": ticket_info,
+                "validation_info": validation_info,
+                "sources": rag_response.get("sources", []),
+                "knowledge_bases_used": rag_response.get("knowledge_bases_used", []),
+                "source_count": rag_response.get("source_count", 0)
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in process_query_with_ticket_creation: {str(e)}")
+            # Fallback to basic RAG response on error
+            basic_response = self.search_knowledge_base(query, user_role, chat_history)
+            return {
+                "response": basic_response.get("response", "I apologize, but I'm experiencing technical difficulties."),
+                "original_rag_response": basic_response.get("response", ""),
+                "intent_analysis": {"intent": "query", "urgency": "medium", "sentiment": "neutral"},
+                "ticket_created": False,
+                "ticket_info": None,
+                "validation_info": None,
+                "sources": basic_response.get("sources", []),
+                "knowledge_bases_used": basic_response.get("knowledge_bases_used", []),
+                "source_count": basic_response.get("source_count", 0),
+                "error": str(e)
+            }
+    
+    def _extract_title_from_query(self, query: str) -> str:
+        """Extract a suitable title from user query"""
+        # Take first sentence or first 50 characters, whichever is shorter
+        sentences = query.split('.')
+        first_sentence = sentences[0].strip()
+        
+        if len(first_sentence) <= 50:
+            return first_sentence
+        else:
+            # Truncate to 50 characters at word boundary
+            words = first_sentence.split()
+            title = ""
+            for word in words:
+                if len(title + " " + word) <= 47:  # Leave room for "..."
+                    title = title + " " + word if title else word
+                else:
+                    break
+            return title + "..." if len(first_sentence) > 50 else title

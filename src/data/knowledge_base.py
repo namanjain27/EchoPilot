@@ -234,12 +234,12 @@ class KnowledgeBaseManager:
         Get knowledge base types accessible to a user role
         
         Args:
-            user_role: User role (associate/customer) - can be string or list
+            user_role: User role (associate/customer) - can be string, list, or UserRole enum
             
         Returns:
             List of accessible knowledge base types
         """
-        # Handle both string and list inputs for user_role
+        # Handle different input types for user_role
         if isinstance(user_role, list):
             if len(user_role) > 0:
                 normalized_role = str(user_role[0]).lower()
@@ -248,6 +248,8 @@ class KnowledgeBaseManager:
                 normalized_role = 'customer'
         elif isinstance(user_role, str):
             normalized_role = user_role.lower()
+        elif hasattr(user_role, 'value'):  # Handle UserRole enum
+            normalized_role = user_role.value.lower()
         else:
             logger.warning(f"Invalid user_role type: {type(user_role)}, defaulting to customer")
             normalized_role = 'customer'
