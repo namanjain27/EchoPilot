@@ -659,3 +659,27 @@ Short description: Fixed UserRole enum handling in get_accessible_kb_types funct
 - **Added**: Check for objects with `value` attribute to handle enum types gracefully
 - **Maintained**: Backward compatibility with existing string and list-based role passing
 - **Preserved**: All existing error handling and fallback behavior
+
+--------
+
+## Windows Signal Handling Bug Fix ✅
+Date and time: 2025-08-23
+Short description: Fixed Windows compatibility issue with Unix-specific signal handling in document processor
+
+### Issue Analysis:
+- **Error**: `module 'signal' has no attribute 'SIGALRM'` and `module 'signal' has no attribute 'alarm'`
+- **Root Cause**: Code used Unix-specific signal handling (`signal.SIGALRM`, `signal.alarm`) which are not available on Windows
+- **Location**: `src/data/document_processor.py:557-558` in `ingest_file` method
+- **Impact**: File upload functionality failing on Windows systems with console errors
+
+### Fix Implementation:
+- **Removed**: Unix-specific signal handling (`signal.SIGALRM`, `signal.alarm`, timeout handler)
+- **Replaced**: With cross-platform timeout check using basic time elapsed measurement
+- **Simplified**: Timeout protection using `time.time()` comparison (5-minute limit maintained)
+- **Cleaned**: Removed unused `signal` import to prevent future confusion
+
+### Technical Changes:
+- Replaced signal-based timeout with simple time elapsed check after file processing
+- Maintained same 300-second (5-minute) timeout limit for file processing
+- Preserved all existing error handling and logging functionality
+- No changes to API or functionality - only implementation approach

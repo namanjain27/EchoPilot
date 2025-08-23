@@ -12,7 +12,6 @@ import mimetypes
 from dataclasses import dataclass
 from datetime import datetime
 import json
-import signal
 import time
 
 # Configure logging
@@ -543,27 +542,24 @@ class IngestionPipeline:
         Returns:
             True if successful, False otherwise
         """
-        
-        
-        def timeout_handler(signum, frame):
-            raise TimeoutError("File processing timed out")
-        
         start_time = time.time()
         
         try:
             from .knowledge_base import KnowledgeBaseType
-            
-            # Set timeout for large file processing (5 minutes)
-            signal.signal(signal.SIGALRM, timeout_handler)
-            signal.alarm(300)  # 5 minutes timeout
             
             # Convert string to enum
             kb_enum = KnowledgeBaseType.INTERNAL if kb_type.lower() == 'internal' else KnowledgeBaseType.GENERAL
             
             logger.info(f"Starting ingestion of {file_path}")
             
-            # Process file into chunks
+            # Process file into chunks with basic timeout check
             chunks = self.processor.process_file(file_path, metadata)
+            
+            # Check if processing took too long (basic timeout protection)
+            processing_time = time.time() - start_time
+            if processing_time > 300:  # 5 minutes timeout
+                logger.error(f"File processing took too long ({processing_time:.2f}s) for {file_path}")
+                return False
             
             if not chunks:
                 logger.warning(f"No chunks generated from file: {file_path}")
@@ -593,15 +589,9 @@ class IngestionPipeline:
             
             return success
             
-        except TimeoutError:
-            logger.error(f"File processing timed out for {file_path} after {time.time() - start_time:.2f}s")
-            return False
         except Exception as e:
             logger.error(f"Error ingesting file {file_path}: {e}")
             return False
-        finally:
-            # Cancel the alarm
-            signal.alarm(0)
     
     def ingest_directory(self, directory_path: str, kb_type: str,
                         recursive: bool = True,

@@ -27,13 +27,13 @@ class SessionHandler:
                 "customer": []
             }
         
-        # Migrate old single chat_history to role-based system if it exists
-        if 'chat_history' in st.session_state and st.session_state.chat_history:
-            # Move existing chat to customer role as default migration
-            if not st.session_state.chat_histories["customer"]:
-                st.session_state.chat_histories["customer"] = st.session_state.chat_history
-            # Remove old single chat_history
-            del st.session_state.chat_history
+        # # Migrate old single chat_history to role-based system if it exists
+        # if 'chat_history' in st.session_state and st.session_state.chat_history:
+        #     # Move existing chat to customer role as default migration
+        #     if not st.session_state.chat_histories["customer"]:
+        #         st.session_state.chat_histories["customer"] = st.session_state.chat_history
+        #     # Remove old single chat_history
+        #     del st.session_state.chat_history
         
         if 'session_id' not in st.session_state:
             st.session_state.session_id = None
