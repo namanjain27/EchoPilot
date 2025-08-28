@@ -1,7 +1,11 @@
 # Core dependencies
 streamlit>=1.28.0
-langchain>=0.0.350
 chromadb>=0.4.15
+langchain_community
+langchain_core
+langchain_text_splitters
+langchain_huggingface
+langchain-chroma
 
 # AI/ML dependencies
 sentence-transformers>=2.2.2

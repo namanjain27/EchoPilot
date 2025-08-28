@@ -6,6 +6,7 @@ Customer Success Copilot with role-based access
 import streamlit as st
 import sys
 import os
+import time
 from typing import List, Tuple
 
 # Add src to path for imports
@@ -299,19 +300,22 @@ def render_main_content():
                     analysis = message["intent_analysis"]
                     col1, col2, col3 = st.columns(3)
                     with col1:
-                        intent_text = analysis.get('intent', 'unknown')
-                        if hasattr(intent_text, 'value'):
-                            intent_text = intent_text.value
+                        try:
+                            intent_text = analysis.intent.value if hasattr(analysis, 'intent') else 'unknown'
+                        except AttributeError:
+                            intent_text = 'unknown'
                         st.caption(f"Intent: {intent_text}")
                     with col2:
-                        urgency_text = analysis.get('urgency', 'unknown')
-                        if hasattr(urgency_text, 'value'):
-                            urgency_text = urgency_text.value
+                        try:
+                            urgency_text = analysis.urgency.value if hasattr(analysis, 'urgency') else 'unknown'
+                        except AttributeError:
+                            urgency_text = 'unknown'
                         st.caption(f"Urgency: {urgency_text}")
                     with col3:
-                        sentiment_text = analysis.get('sentiment', 'unknown')
-                        if hasattr(sentiment_text, 'value'):
-                            sentiment_text = sentiment_text.value
+                        try:
+                            sentiment_text = analysis.sentiment.value if hasattr(analysis, 'sentiment') else 'unknown'
+                        except AttributeError:
+                            sentiment_text = 'unknown'
                         st.caption(f"Sentiment: {sentiment_text}")
                 
                 # Show ticket information if available
@@ -404,7 +408,15 @@ def render_main_content():
 
 def render_file_upload_section():
     """Render file upload section for Associates"""
-    st.subheader("📁 File Upload")
+    st.subheader("📁 Upload file to Knowledge Base")
+    
+    # Initialize upload completion tracking in session state
+    if 'upload_completed' not in st.session_state:
+        st.session_state.upload_completed = False
+    if 'uploader_key' not in st.session_state:
+        st.session_state.uploader_key = 0
+    if 'last_upload_results' not in st.session_state:
+        st.session_state.last_upload_results = None
     
     # Knowledge base selector
     kb_options = {
@@ -421,12 +433,13 @@ def render_file_upload_section():
     
     kb_type = kb_options[selected_kb]
     
-    # File uploader
+    # File uploader with dynamic key to allow clearing
     uploaded_files = st.file_uploader(
         "Choose files to upload",
         #type=['txt', 'md', 'json', 'csv', 'pdf', 'docx', 'doc', 'jpg', 'jpeg', 'png', 'bmp', 'tiff'],
         accept_multiple_files=True,
-        help="Supported formats: PDF, Word docs, Images, TXT, MD, JSON, CSV"
+        help="Supported formats: PDF, Word docs, Images, TXT, MD, JSON, CSV",
+        key=f"file_uploader_{st.session_state.uploader_key}"
     )
     
     if uploaded_files:
@@ -480,42 +493,92 @@ def render_file_upload_section():
                 progress_bar.progress(1.0)
                 status_text.text(f"❌ Upload failed: {str(e)}")
                 st.error(f"Upload error: {e}")
+                
+                # Still reset context even on critical failure
+                st.session_state.upload_completed = True
+                st.session_state.uploader_key += 1
+                st.info("🔄 Context has been reset. Please try uploading again.")
+                time.sleep(1)
+                st.rerun()
                 return
             
-            # Display results
+            # Display results with clear separation
             st.subheader("📊 Upload Results")
             
             successful = 0
             failed = 0
             total_chunks = 0
+            successful_files = []
+            failed_files = []
             
+            # Categorize results
             for result in results:
                 if result.success:
                     successful += 1
                     total_chunks += result.chunks_created
-                    st.success(f"✅ {result.filename}: {result.message}")
-                    if result.processing_time_seconds > 0:
-                        st.caption(f"   Processed in {result.processing_time_seconds:.2f}s")
+                    successful_files.append(result)
                 else:
                     failed += 1
-                    st.error(f"❌ {result.filename}: {result.message}")
+                    failed_files.append(result)
             
-            # Summary
+            # Display successful uploads
+            if successful_files:
+                st.success(f"✅ **Successfully Uploaded ({successful} files):**")
+                for result in successful_files:
+                    st.write(f"• {result.filename}")
+                    if result.processing_time_seconds > 0:
+                        st.caption(f"  └─ Processed in {result.processing_time_seconds:.2f}s, {result.chunks_created} chunks created")
+            
+            # Display failed uploads
+            if failed_files:
+                st.error(f"❌ **Upload Failed ({failed} files):**")
+                for result in failed_files:
+                    st.write(f"• {result.filename}: {result.message}")
+                st.warning("⚠️ Failed files have been removed from the context.")
+            
+            # Get knowledge base stats for verification
+            kb_manager = st.session_state.rag_engine.knowledge_base
+            kb_stats = kb_manager.get_collection_stats()
+            
+            # Summary with actual knowledge base confirmation
             if successful > 0:
-                st.success(f"🎉 Successfully uploaded {successful} file(s) creating {total_chunks} chunks in the {selected_kb.lower()}")
+                actual_kb_name = "Internal Knowledge Base" if kb_type == "internal" else "General Knowledge Base"
+                st.success(f"🎉 Successfully uploaded {successful} file(s) creating {total_chunks} chunks to the {actual_kb_name}")
+                
+                # Show knowledge base verification
+                with st.expander("📊 Knowledge Base Verification", expanded=False):
+                    st.write(f"**Target Knowledge Base:** {actual_kb_name} (kb_type: {kb_type})")
+                    st.write(f"**Internal KB Documents:** {kb_stats.get('internal_documents', 0)}")
+                    st.write(f"**General KB Documents:** {kb_stats.get('general_documents', 0)}")
+                    st.write(f"**Total Documents:** {kb_stats.get('total_documents', 0)}")
             
-            if failed > 0:
-                st.warning(f"⚠️ {failed} file(s) failed to upload")
+            # Consolidated status message for both success and failure
+            if failed > 0 and successful > 0:
+                st.info(f"📄 Upload completed: {successful} successful, {failed} failed. Context will be reset.")
+            elif failed > 0:
+                st.info(f"📄 Upload completed: All {failed} files failed. Context will be reset.")
+            elif successful > 0:
+                st.info(f"📄 Upload completed: All {successful} files successful. Context will be reset.")
             
             # Show final memory stats
             final_memory = upload_manager._get_memory_usage()
             st.caption(f"Final memory usage: {final_memory.get('memory_mb', 0):.1f}MB")
             
-            # Refresh the knowledge base stats
+            # Clear the file uploader and refresh after any upload (success or failure)
+            st.info("💡 Upload process completed!")
             if successful > 0:
-                st.info("💡 Knowledge base has been updated with new content!")
-                # Clear the uploader by rerunning
-                st.rerun()
+                st.success("✨ Knowledge base has been updated with new content!")
+            
+            # Always mark upload as completed and increment uploader key to clear files
+            # This ensures context reset regardless of success/failure
+            st.session_state.upload_completed = True
+            st.session_state.uploader_key += 1
+            
+            # Add a brief delay to show status messages before clearing
+            time.sleep(1)
+            
+            # Clear the context and refresh UI
+            st.rerun()
 
 
 def main():

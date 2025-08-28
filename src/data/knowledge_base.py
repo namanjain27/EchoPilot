@@ -173,6 +173,9 @@ class KnowledgeBaseManager:
         """
         try:
             collection = self._get_collection(kb_type)
+            collection_name = "internal_knowledge_base" if kb_type == KnowledgeBaseType.INTERNAL else "general_knowledge_base"
+            
+            logger.info(f"KnowledgeBaseManager.add_documents: Adding {len(documents)} documents to kb_type={kb_type.value} (collection: {collection_name})")
             
             if not ids:
                 ids = [str(uuid.uuid4()) for _ in documents]
@@ -183,7 +186,7 @@ class KnowledgeBaseManager:
                 ids=ids
             )
             
-            logger.info(f"Added {len(documents)} documents to {kb_type.value} knowledge base")
+            logger.info(f"Successfully added {len(documents)} documents to {kb_type.value} knowledge base (collection: {collection_name})")
             return True
             
         except Exception as e:

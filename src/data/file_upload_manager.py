@@ -159,22 +159,35 @@ class FileUploadManager:
         results = []
         start_time = datetime.now()
         
+        # Debug logging for knowledge base selection
+        logger.info(f"FileUploadManager.upload_files called with kb_type='{kb_type}' for {len(files)} files")
+        
         try:
             # Validate batch first
             is_valid, errors = self.validate_batch(files)
             if not is_valid:
-                # Return error results for all files
+                # Return error results for all files with descriptive messages
                 for i, (filename, _) in enumerate(files):
-                    error_msg = errors[i] if i < len(errors) else "Batch validation failed"
+                    if i < len(errors) and filename in errors[i]:
+                        error_msg = errors[i]
+                    else:
+                        # Extract general batch errors
+                        general_errors = [e for e in errors if not any(f[0] in e for f in files)]
+                        error_msg = general_errors[0] if general_errors else "Batch validation failed"
+                    
                     results.append(UploadResult(
                         filename=filename,
                         success=False,
-                        message=error_msg
+                        message=error_msg.replace(f"{filename}: ", "") if filename in error_msg else error_msg,
+                        file_size_mb=len(files[i][1]) / (1024 * 1024) if i < len(files) else 0
                     ))
+                
+                logger.warning(f"Batch validation failed: {'; '.join(errors)}")
                 return results
             
             # Process each file
             for filename, file_content in files:
+                logger.info(f"Processing file '{filename}' for kb_type='{kb_type}'")
                 result = self._process_single_file(
                     filename, file_content, kb_type, metadata
                 )
@@ -216,15 +229,15 @@ class FileUploadManager:
         temp_file_path = None
         
         try:
-            # Validate individual file
-            is_valid, error_msg = self.validate_file(file_content, filename)
-            if not is_valid:
-                return UploadResult(
-                    filename=filename,
-                    success=False,
-                    message=error_msg,
-                    file_size_mb=len(file_content) / (1024 * 1024)
-                )
+            # # Validate individual file [DUPLICATE - redundant]
+            # is_valid, error_msg = self.validate_file(file_content, filename)
+            # if not is_valid:
+            #     return UploadResult(
+            #         filename=filename,
+            #         success=False,
+            #         message=error_msg,
+            #         file_size_mb=len(file_content) / (1024 * 1024)
+            #     )
             
             # Check memory limits before processing
             file_size_mb = len(file_content) / (1024 * 1024)

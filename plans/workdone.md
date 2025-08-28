@@ -683,3 +683,151 @@ Short description: Fixed Windows compatibility issue with Unix-specific signal h
 - Maintained same 300-second (5-minute) timeout limit for file processing
 - Preserved all existing error handling and logging functionality
 - No changes to API or functionality - only implementation approach
+
+--------
+
+## Data Ingestion Flow Fixes ✅
+Date and time: 2025-08-23
+Short description: Fixed file uploader persistence and knowledge base selection issues in data ingestion flow
+
+### Issues Fixed:
+
+#### Issue 1: File Uploader Persistence Problem
+- **Problem**: After successful upload, files remained selected in the file uploader, causing duplicate uploads
+- **Root Cause**: Streamlit's `st.file_uploader` maintains state across `st.rerun()` calls
+- **Impact**: Users experienced files being uploaded multiple times when pressing upload button again
+
+#### Issue 2: Knowledge Base Selection Not Working
+- **Problem**: All uploads appeared to go to general knowledge base regardless of dropdown selection
+- **Root Cause**: Insufficient logging to track knowledge base selection flow and verify correct routing
+- **Impact**: Internal knowledge base uploads were not working as expected
+
+### Fix Implementation:
+
+#### File Uploader Persistence Fix
+- **Added**: Session state tracking for upload completion (`upload_completed`, `uploader_key`)
+- **Implemented**: Dynamic key system for file uploader widget to force clearing after successful upload
+- **Mechanism**: Increment `uploader_key` after successful upload, forcing Streamlit to create new widget instance
+- **Result**: File uploader now clears automatically after successful upload, preventing duplicate uploads
+
+#### Knowledge Base Selection & Verification System
+- **Enhanced**: Success messages to show actual target knowledge base (not just UI display name)
+- **Added**: Comprehensive debugging logging throughout upload pipeline:
+  - FileUploadManager: Logs kb_type parameter received from UI
+  - DocumentProcessor: Logs kb_type string to enum conversion
+  - KnowledgeBaseManager: Logs which collection documents are added to
+- **Implemented**: Knowledge base verification panel showing document counts before/after upload
+- **Added**: Expandable debugging panel with collection statistics for troubleshooting
+
+### Technical Implementation:
+
+#### Files Modified:
+1. **`src/ui/streamlit_app.py`**:
+   - Added session state management for upload completion tracking
+   - Implemented dynamic file uploader key system
+   - Enhanced success messages with actual knowledge base confirmation
+   - Added knowledge base verification panel with document counts
+
+2. **`src/data/file_upload_manager.py`**:
+   - Added debug logging to track kb_type parameter throughout processing
+   - Enhanced logging for each file processing step
+
+3. **`src/data/document_processor.py`**:
+   - Added comprehensive logging for kb_type string to enum conversion
+   - Added verification logging before adding documents to knowledge base
+
+4. **`src/data/knowledge_base.py`**:
+   - Added detailed logging showing which collection documents are added to
+   - Enhanced logging with collection name confirmation
+
+### Features Added:
+- **Automatic File Uploader Clearing**: Files are automatically removed from uploader after successful upload
+- **Knowledge Base Verification Panel**: Expandable section showing document counts and target confirmation
+- **Enhanced Success Messages**: Clear indication of which knowledge base was actually used
+- **Comprehensive Debug Logging**: Full pipeline tracking for troubleshooting knowledge base selection
+- **Upload Statistics**: Real-time knowledge base document counts for verification
+
+### User Experience Improvements:
+- No more duplicate file uploads from persistent file uploader state
+- Clear confirmation of which knowledge base files were uploaded to
+- Verification statistics showing internal vs general knowledge base document counts
+- Better error tracking and debugging capabilities for upload issues
+
+--------
+
+## IntentClassifier Method Name Bug Fix ✅
+Date and time: 2025-08-24
+Short description: Fixed 'IntentClassifier' object has no attribute 'classify_intent' error that prevented ticket creation
+
+### Issue Analysis:
+- **Error**: `ERROR:ai.rag_engine:Error in process_query_with_ticket_creation: 'IntentClassifier' object has no attribute 'classify_intent'`
+- **Root Cause**: RAG engine calling non-existent `classify_intent()` method instead of actual `analyze_message()` method
+- **Impact**: Ticket creation functionality completely broken due to method name mismatch and return type incompatibility
+
+### Fix Implementation:
+- **Updated**: Method call in `rag_engine.py:282` from `classify_intent(query)` to `analyze_message(query)`
+- **Fixed**: Return value handling from dictionary `.get()` access to dataclass attribute access
+- **Corrected**: Fallback error case to return proper `IntentAnalysis` object instead of dictionary
+- **Added**: Required imports for `IntentAnalysis`, `IntentType`, `Urgency`, `Sentiment` classes
+
+### Technical Changes:
+- Changed `intent_analysis.get("intent", "query")` to `intent_analysis.intent.value`
+- Changed `intent_analysis.get("urgency", "medium")` to `intent_analysis.urgency.value` 
+- Changed `intent_analysis.get("sentiment", "neutral")` to `intent_analysis.sentiment.value`
+- Updated fallback case to create proper `IntentAnalysis` object with enum values
+
+### Result:
+- Ticket creation functionality restored and working correctly
+- Intent classification now properly interfaces with the IntentClassifier API
+- System can correctly analyze user messages and determine when to create tickets
+
+--------
+
+## Streamlit UI IntentAnalysis Display Bug Fix ✅
+Date and time: 2025-08-24
+Short description: Fixed AttributeError when displaying intent analysis in chat interface
+
+### Issue Analysis:
+- **Error**: `AttributeError: 'IntentAnalysis' object has no attribute 'get'` at line 302 in streamlit_app.py
+- **Root Cause**: UI code still using dictionary `.get()` method after RAG engine was fixed to return dataclass objects
+- **Impact**: Chat interface completely broken when trying to display messages with intent analysis
+
+### Fix Implementation:
+- **Updated**: Intent analysis display code in `render_main_content()` function (lines 302-318)
+- **Changed**: From dictionary access `analysis.get('intent', 'unknown')` to dataclass access `analysis.intent.value`
+- **Added**: Comprehensive error handling with try-catch blocks for AttributeError
+- **Enhanced**: Attribute existence checks using `hasattr()` before accessing values
+
+### Technical Changes:
+- Intent access: `analysis.get('intent', 'unknown')` → `analysis.intent.value if hasattr(analysis, 'intent') else 'unknown'`
+- Urgency access: `analysis.get('urgency', 'unknown')` → `analysis.urgency.value if hasattr(analysis, 'urgency') else 'unknown'`
+- Sentiment access: `analysis.get('sentiment', 'unknown')` → `analysis.sentiment.value if hasattr(analysis, 'sentiment') else 'unknown'`
+- Added try-catch blocks around each attribute access for robustness
+
+### Result:
+- Chat interface now properly displays intent analysis information (Intent, Urgency, Sentiment)
+- No more AttributeError when viewing messages with intent classification
+- Robust error handling for edge cases and missing attributes
+- Consistent data access pattern between RAG engine and Streamlit UI
+
+--------
+
+## File Upload Context Reset Implementation ✅
+Date and time: 2025-08-24
+Short description: Implemented proper context reset after file uploads to clear files from uploader regardless of success or failure
+
+### Issue Analysis:
+- **Problem**: File uploader context persisted after uploads, with failed files remaining visible
+- **User Request**: Reset context after every upload (success or failure) and clearly show status of successful/failed files
+- **Impact**: Users confused by lingering files and unclear status feedback
+
+### Fix Implementation:
+- **Enhanced Context Reset**: File uploader now resets after every upload attempt, regardless of outcome
+- **Improved Status Display**: Clear separation of successful and failed uploads with descriptive messaging
+- **Better Error Handling**: Failed files are explicitly removed from context with warning messages
+
+### Technical Changes:
+1. **Always Reset Context**: Moved uploader key increment outside success-only condition
+2. **Enhanced Exception Handling**: Critical failures also trigger context reset with user feedback
+3. **Improved Status Messages**: Clear categorization of successful vs failed files with detailed messaging
+4. **User Feedback Enhancement**: Added explicit messaging about context reset and failed file removal

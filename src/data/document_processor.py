@@ -114,10 +114,6 @@ class DocumentProcessor:
             file_path = Path(file_path)
             file_extension = file_path.suffix.lower()
             
-            if file_extension not in self.supported_types:
-                logger.warning(f"Unsupported file type: {file_extension}")
-                return []
-            
             # Process file based on type
             processor = self.supported_types[file_extension]
             text_content = processor(str(file_path))
@@ -260,7 +256,7 @@ class DocumentProcessor:
         if not PDF_AVAILABLE:
             logger.error("PDF processing not available - install PyPDF2")
             return ""
-        
+
         try:
             text_content = []
             with open(file_path, 'rb') as f:
@@ -512,6 +508,8 @@ class DocumentProcessor:
             logger.error(f"Error getting file size for {file_path}: {e}")
             return 0.0
 
+    def 
+
 
 class IngestionPipeline:
     """Complete document ingestion pipeline"""
@@ -550,9 +548,7 @@ class IngestionPipeline:
             # Convert string to enum
             kb_enum = KnowledgeBaseType.INTERNAL if kb_type.lower() == 'internal' else KnowledgeBaseType.GENERAL
             
-            logger.info(f"Starting ingestion of {file_path}")
-            
-            # Process file into chunks with basic timeout check
+            logger.info(f"IngestionPipeline.ingest_file: Processing '{file_path}' with kb_type='{kb_type}' -> enum={kb_enum.value}")
             chunks = self.processor.process_file(file_path, metadata)
             
             # Check if processing took too long (basic timeout protection)
@@ -573,6 +569,7 @@ class IngestionPipeline:
             ids = [chunk.chunk_id for chunk in chunks]
             
             # Add to knowledge base
+            logger.info(f"Adding {len(documents)} documents to knowledge base with kb_type={kb_enum.value}")
             success = self.kb_manager.add_documents(
                 documents=documents,
                 metadatas=metadatas,

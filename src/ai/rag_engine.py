@@ -8,7 +8,7 @@ import logging
 from .gemini_client import GeminiClient
 from .tool_framework import ToolFramework, ToolCall
 from .complaint_validator import ComplaintValidator
-from .intent_classifier import IntentClassifier
+from .intent_classifier import IntentClassifier, IntentAnalysis, IntentType, Urgency, Sentiment
 from src.data.knowledge_base import KnowledgeBaseManager
 from src.integrations.ticket_manager import TicketManager
 from src.integrations.jira_client import JiraClient
@@ -279,10 +279,10 @@ class RAGEngine:
         """
         try:
             # Step 1: Classify intent and sentiment
-            intent_analysis = self.intent_classifier.classify_intent(query)
-            intent = intent_analysis.get("intent", "query")
-            urgency = intent_analysis.get("urgency", "medium")
-            sentiment = intent_analysis.get("sentiment", "neutral")
+            intent_analysis = self.intent_classifier.analyze_message(query)
+            intent = intent_analysis.intent.value
+            urgency = intent_analysis.urgency.value
+            sentiment = intent_analysis.sentiment.value
             
             # Step 2: Get regular RAG response first
             rag_response = self.search_knowledge_base(query, user_role, chat_history)
@@ -383,7 +383,12 @@ class RAGEngine:
             return {
                 "response": basic_response.get("response", "I apologize, but I'm experiencing technical difficulties."),
                 "original_rag_response": basic_response.get("response", ""),
-                "intent_analysis": {"intent": "query", "urgency": "medium", "sentiment": "neutral"},
+                "intent_analysis": IntentAnalysis(
+                    intent=IntentType.QUERY,
+                    urgency=Urgency.MEDIUM, 
+                    sentiment=Sentiment.NEUTRAL,
+                    confidence=0.5
+                ),
                 "ticket_created": False,
                 "ticket_info": None,
                 "validation_info": None,
