@@ -237,3 +237,60 @@ class JiraClient:
             "low": "Low"
         }
         return mapping.get(urgency, "Medium")
+
+
+def test_jira_ticket_creation():
+    """Test function to verify Jira ticket creation functionality"""
+    print("Testing Jira Client ticket creation...")
+    
+    # Initialize Jira client
+    jira_client = JiraClient()
+    
+    # Test complaint ticket creation
+    complaint_data = {
+        'title': 'Test Complaint - App Crashes on Login',
+        'description': 'The mobile app consistently crashes when I try to log in with my credentials. This has been happening for the past 3 days.',
+        'urgency': 'high',
+        'sentiment': 'frustrated',
+        'user_query': 'Why does the app keep crashing when I try to log in?',
+        'user_role': 'customer'
+    }
+    
+    print("\n1. Testing complaint ticket creation...")
+    complaint_ticket = jira_client.create_complaint_ticket(complaint_data)
+    print(f"Created complaint ticket: {complaint_ticket}")
+    
+    # # Test service request ticket creation
+    # service_request_data = {
+    #     'title': 'Account Password Reset Request',
+    #     'description': 'Customer needs assistance with resetting their account password as they cannot access the automated reset system.',
+    #     'urgency': 'medium',
+    #     'user_query': 'Can you help me reset my password? The email reset isn\'t working.',
+    #     'user_role': 'customer'
+    # }
+    
+    # print("\n2. Testing service request ticket creation...")
+    # service_ticket = jira_client.create_service_request_ticket(service_request_data)
+    # print(f"Created service request ticket: {service_ticket}")
+    
+    # # Test feature request ticket creation
+    # feature_request_data = {
+    #     'title': 'Add Dark Mode Theme Option',
+    #     'description': 'Customers have been requesting a dark mode theme for better usability during night hours and to reduce eye strain.',
+    #     'urgency': 'low',
+    #     'user_query': 'Can we add a dark mode option to the application?',
+    #     'user_role': 'associate'
+    # }
+    
+    # print("\n3. Testing feature request ticket creation...")
+    # feature_ticket = jira_client.create_feature_request_ticket(feature_request_data)
+    # print(f"Created feature request ticket: {feature_ticket}")
+    
+    # # Test configuration status
+    # print(f"\n4. Jira client configuration status: {'Configured' if jira_client.is_configured else 'Not configured (using mock mode)'}")
+    
+    # print("\nAll ticket creation tests completed!")
+
+
+if __name__ == "__main__":
+    test_jira_ticket_creation()
