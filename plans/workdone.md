@@ -831,3 +831,21 @@ Short description: Implemented proper context reset after file uploads to clear 
 2. **Enhanced Exception Handling**: Critical failures also trigger context reset with user feedback
 3. **Improved Status Messages**: Clear categorization of successful vs failed files with detailed messaging
 4. **User Feedback Enhancement**: Added explicit messaging about context reset and failed file removal
+
+--------
+
+## LangGraph RAG Agent with JIRA Integration ✅
+Date and time: 2025-08-28
+Short description: Refactored JiraTool class with singleton pattern and added JIRA ticket creation tool to echo.py LangGraph agent
+
+### JiraTool Refactoring:
+- **Improved Architecture**: Replaced static method approach with singleton pattern for better resource management
+- **Fixed Method Access**: Converted static method to instance method enabling proper access to JIRA client and project key
+- **Enhanced Error Handling**: Added proper validation for JIRA client initialization and more descriptive error messages
+- **Singleton Implementation**: Used __new__ method for singleton pattern ensuring single JIRA connection per application instance
+
+### Echo.py Tool Integration:
+- **Added JIRA Tool**: Created create_jira_ticket tool function for LangGraph integration
+- **Tool Parameter Handling**: Implemented comma-separated labels parsing for flexible label assignment
+- **Error Handling**: Comprehensive try-catch with detailed error messages for failed ticket creation
+- **Tool Documentation**: Clear docstring explaining tool purpose, parameters, and return format

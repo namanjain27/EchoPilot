@@ -88,13 +88,34 @@ def retriever_tool(query: str) -> str:
     
     results = []
     for i, doc in enumerate(docs):
-        results.append(f"Document {i+1}:\n{doc.page_content}")
+        results.append(f"Document {i+1}:\\n{doc.page_content}")
     
-    return "\n\n".join(results)
+    return "\\n\\n".join(results)
 
 
+@tool
+def create_jira_ticket(summary: str, description: str, labels: str) -> str:
+    """
+    Creates a JIRA ticket for service requests, complaints, and feature requests.
+    
+    Args: 
+        summary: this would be the subject of the ticket. Keep it short and self-defining
+        desc: description should contain all the necessary details to help the associates resolve the issue
+        labels: Comma-separated labels with no spaces. Always have at least 2 values being - mode (associate or customer) and type (service request, complaints or feature request). (e.g., "customer,complaint" or "associate, feature_request")
+    
+    Returns:
+        The created ticket key or error message
+    """
+    try:
+        jira_tool = JiraTool()
+        labels_list = [label.strip() for label in labels.split(",") if label.strip()]
+        ticket_key = jira_tool.create_ticket(summary, description, labels_list)
+        return f"Successfully created JIRA ticket: {ticket_key}"
+    except Exception as e:
+        return f"Failed to create JIRA ticket: {str(e)}"
 
-tools = [retriever_tool]
+
+tools = [retriever_tool, create_jira_ticket]
 
 
 llm = init_chat_model("gemini-2.5-flash", model_provider="google_genai").bind_tools(tools)
@@ -129,7 +150,7 @@ def call_llm(state: AgentState) -> AgentState:
     return {'messages': [message]}
 
 
-# Retriever Agent
+# Tools Agent - retriever and ticket creation
 def take_action(state: AgentState) -> AgentState:
     """Execute tool calls from the LLM's response."""
 
@@ -139,11 +160,11 @@ def take_action(state: AgentState) -> AgentState:
         print(f"Calling Tool: {t['name']} with query: {t['args'].get('query', 'No query provided')}")
         
         if not t['name'] in tools_dict: # Checks if a valid tool is present
-            print(f"\nTool: {t['name']} does not exist.")
+            print(f"\\nTool: {t['name']} does not exist.")
             result = "Incorrect Tool Name, Please Retry and Select tool from List of Available tools."
         
         else:
-            result = tools_dict[t['name']].invoke(t['args'].get('query', ''))
+            result = tools_dict[t['name']].invoke(t['args'])
             print(f"Result length: {len(str(result))}")
             
 
@@ -156,21 +177,21 @@ def take_action(state: AgentState) -> AgentState:
 
 graph = StateGraph(AgentState)
 graph.add_node("llm", call_llm)
-graph.add_node("retriever_agent", take_action)
+graph.add_node("tool_agent", take_action)
 
 graph.add_conditional_edges(
     "llm",
     should_continue,
-    {True: "retriever_agent", False: END}
+    {True: "tool_agent", False: END}
 )
-graph.add_edge("retriever_agent", "llm")
+graph.add_edge("tool_agent", "llm")
 graph.set_entry_point("llm")
 
 rag_agent = graph.compile()
 
 
 def running_agent():
-    print("\n=== RAG AGENT===")
+    print("\\n=== RAG AGENT===")
     
     while True:
         user_input = input("\nWhat is your question: ")
