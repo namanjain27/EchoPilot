@@ -12,12 +12,14 @@ from langchain.schema import Document
 ## a function that takes multi-file input and stores them in the vector db
 logger = logging.getLogger(__name__)
 
-def extract_docx(file_path) -> str:
+def extract_docx(file_path) -> list:
+    """Extract text from DOCX files and return as Document list"""
     text = docx2txt.process(file_path) 
     document = Document(page_content=text, metadata={"source": str(file_path)})
     return [document]
 
-def extract_pdf(file_path):
+def extract_pdf(file_path) -> list:
+    """Extract text from PDF files and return as Document list"""
     pdf_loader = PyPDFLoader(file_path) 
     try:
         pages = pdf_loader.load()
@@ -27,57 +29,90 @@ def extract_pdf(file_path):
         print(f"Error loading PDF: {e}")
         return None
 
-# This works for both .txt and .md files.
-def extract_txt(file_path):
+def extract_txt(file_path) -> list:
+    """Extract text from TXT and MD files and return as Document list"""
     loader = TextLoader(file_path, encoding="utf-8")
     return loader.load()  # returns List[Document]
 
-# allowed file ext. - pdf, docx, txt, md 
-file_path = r'knowledgeBaseFiles\Amazon_faq_sada.docx'
-file_path = Path(file_path)
-file_extension = file_path.suffix.lower()
-
-if not os.path.exists(file_path):
-    raise FileNotFoundError(f"PDF file not found: {file_path}")
-
-# Process file based on type
-# text extraction begins
-
-# processor = self.supported_types[file_extension]
-# file_content = processor(str(file_path))
-file_content = extract_docx(file_path) # List[Docs]
-
-if not file_content:
-    logger.warning(f"No content extracted from: {file_path}") #return empty
-
-# Chunking Process initiate
-text_splitter = RecursiveCharacterTextSplitter(
-    chunk_size=1000,
-    chunk_overlap=200
-)
-
-pages_split = text_splitter.split_documents(file_content) # We now apply this to our pages
-
-persist_directory = r"D:\codes\EchoPilot\knowledgeBaseFiles"
-collection_name = "kb_general"
-# If our collection does not exist in the directory, we create using the os command
-if not os.path.exists(persist_directory):
-    os.makedirs(persist_directory)
-
-
-# encoding - create embeddings
-embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-mpnet-base-v2")
-
-# store them in the vector DB
-try:
-    vectorstore = Chroma.from_documents(
-        documents=pages_split,
-        embedding=embeddings,
-        persist_directory=persist_directory,
-        collection_name=collection_name
-    )
-    print(f"Created ChromaDB vector store!")
+def ingest_file_to_vectordb(file_path: str) -> None:
+    """
+    Main function to ingest a file into ChromaDB vector store
+    Supports: PDF, DOCX, TXT, MD file extensions
     
-except Exception as e:
-    print(f"Error setting up ChromaDB: {str(e)}")
-    raise
+    Args:
+        file_path (str): Path to the file to ingest
+        
+    Raises:
+        FileNotFoundError: If file doesn't exist
+        ValueError: If file extension is not supported
+        Exception: For other processing errors
+    """
+    # Supported file processors mapping
+    supported_types = {
+        '.pdf': extract_pdf,
+        '.docx': extract_docx,
+        '.txt': extract_txt,
+        '.md': extract_txt
+    }
+    
+    file_path = Path(file_path)
+    
+    # Check if file exists
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"File not found: {file_path}")
+    
+    file_extension = file_path.suffix.lower()
+    
+    # Check if file extension is supported
+    if file_extension not in supported_types:
+        raise ValueError(f"Unsupported file extension: {file_extension}. Supported types: {list(supported_types.keys())}")
+    
+    # Process file based on type
+    processor = supported_types[file_extension]
+    file_content = processor(str(file_path))
+    
+    if not file_content:
+        logger.warning(f"No content extracted from: {file_path}")
+        return
+    
+    # Chunking Process initiate
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=1000,
+        chunk_overlap=200
+    )
+    
+    pages_split = text_splitter.split_documents(file_content)
+    
+    persist_directory = r"D:\codes\EchoPilot\knowledgeBaseFiles"
+    collection_name = "kb_general"
+    
+    # Create directory if it doesn't exist
+    if not os.path.exists(persist_directory):
+        os.makedirs(persist_directory)
+    
+    # Create embeddings
+    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-mpnet-base-v2")
+    
+    # Store in vector DB
+    try:
+        vectorstore = Chroma.from_documents(
+            documents=pages_split,
+            embedding=embeddings,
+            persist_directory=persist_directory,
+            collection_name=collection_name
+        )
+        print(f"Successfully ingested {file_path.name} into ChromaDB vector store!")
+        
+    except Exception as e:
+        print(f"Error setting up ChromaDB: {str(e)}")
+        raise
+
+# Example usage (can be removed or commented out for module use)
+if __name__ == "__main__":
+    file_path = input("Give the file path to ingest: ")
+    try:
+        ingest_file_to_vectordb(file_path)
+    except (FileNotFoundError, ValueError) as e:
+        print(f"Error: {e}")
+    except Exception as e:
+        print(f"Unexpected error: {e}")

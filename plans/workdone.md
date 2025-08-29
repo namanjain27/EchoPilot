@@ -849,3 +849,21 @@ Short description: Refactored JiraTool class with singleton pattern and added JI
 - **Tool Parameter Handling**: Implemented comma-separated labels parsing for flexible label assignment
 - **Error Handling**: Comprehensive try-catch with detailed error messages for failed ticket creation
 - **Tool Documentation**: Clear docstring explaining tool purpose, parameters, and return format
+
+--------
+
+## Data Ingestion Refactor: Single Function Implementation ✅
+Date and time: 2025-08-29
+Short description: Refactored data_ingestion.py to create single ingestion function with appropriate processor selection and exception handling
+
+### Implementation Changes:
+- **Created Main Function**: `ingest_file_to_vectordb(file_path)` - single entry point for file ingestion with automatic processor selection
+- **Processor Mapping**: Added supported_types dictionary mapping file extensions to appropriate processor functions
+- **Exception Handling**: Added comprehensive error handling for unsupported file types, missing files, and processing failures
+- **Function Documentation**: Added detailed docstrings explaining supported formats, parameters, and exceptions raised
+
+### Technical Improvements:
+- **File Validation**: Check file existence before processing with clear FileNotFoundError
+- **Extension Support**: Clear mapping of supported extensions (.pdf, .docx, .txt, .md) with ValueError for unsupported types
+- **Error Recovery**: Proper exception handling throughout processing pipeline with user-friendly error messages
+- **Code Organization**: Moved execution logic to __main__ block for better module reusability
