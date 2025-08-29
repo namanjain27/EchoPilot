@@ -25,6 +25,7 @@ pytesseract>=0.3.10
 Pillow>=10.0.0
 
 pypdf
+docx2txt
 
 # API integrations
 requests>=2.31.0

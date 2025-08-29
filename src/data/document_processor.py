@@ -508,9 +508,6 @@ class DocumentProcessor:
             logger.error(f"Error getting file size for {file_path}: {e}")
             return 0.0
 
-    def 
-
-
 class IngestionPipeline:
     """Complete document ingestion pipeline"""
     
