@@ -21,3 +21,11 @@
 - Modified `ingest_file_to_vectordb()` to accept multiple file paths (string or list)
 - Added error handling to skip unsupported/missing files and continue processing others
 - Updated main section to handle comma-separated file inputs for batch processing
+
+## Multi-Modal Image Support Implementation
+- Added direct image processing capabilities using existing Gemini-2.5-flash model
+- Implemented `process_image_to_base64()` helper function supporting PNG, JPG, JPEG, GIF, WEBP formats
+- Created `parse_multimodal_input()` to extract image references from user input using 'image:' or 'img:' syntax
+- Enhanced `running_agent()` to handle multi-modal HumanMessage content arrays with text and base64-encoded images
+- Updated system prompt to include image analysis capabilities and decision flow for visual content
+- No library changes required - leverages existing ChatGoogleGenerativeAI multi-modal support

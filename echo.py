@@ -1,5 +1,8 @@
 from dotenv import load_dotenv
 import os
+import base64
+import re
+from pathlib import Path
 from langgraph.graph import StateGraph, END
 from typing import TypedDict, Annotated, Sequence
 from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage, ToolMessage, AIMessage
@@ -84,18 +87,23 @@ def should_continue(state: AgentState):
 
 
 system_prompt = """
-You are an intelligent AI assistant who answers questions based on the documents in your knowledge base.
+You are an intelligent AI assistant who answers questions based on the documents in your knowledge base and can analyze images.
 Use the retriever tool to get trusted answers, and you can make multiple calls if needed.
 Always cite the specific passages you use. Answer only the latest user query (earlier chats are context).
 
+When images are provided:
+- Analyze them thoroughly and describe relevant details
+- Connect image content to knowledge base information when applicable
+- Use image analysis to better understand customer issues or requests
+
 Decision flow:
 1. First check intent (query, complaint, service/feature request), as well as urgency and sentiment (these become ticket labels if a ticket is created).
-2. If query → try a simple RAG answer with retriever. If not found, offer to create a ticket.
+2. If query → analyze any provided images, try a simple RAG answer with retriever. If not found, offer to create a ticket.
 3. If complaint →
-3.1. If valid per KB → offer to create a complaint ticket.
+3.1. If valid per KB or supported by image evidence → offer to create a complaint ticket.
 3.2. If invalid per KB → explain reasons with citations.
 3.3. If KB lacks enough info → still offer to create a ticket, and ask for any additional relevant details. 
-4. If service/feature request → ask any clarifying questions if needed, then offer to create a ticket.
+4. If service/feature request → analyze images for context, ask any clarifying questions if needed, then offer to create a ticket.
 """
 
 
@@ -133,6 +141,52 @@ def take_action(state: AgentState) -> AgentState:
     print("Tools Execution Complete. Back to the model!")
     return {'messages': results}
 
+# Image processing helper function
+def process_image_to_base64(image_path: str) -> str:
+    """
+    Convert image file to base64 string for Gemini multi-modal input
+    Supports: PNG, JPG, JPEG, GIF, WEBP formats
+    """
+    try:
+        image_path = Path(image_path)
+        
+        # Validate file exists
+        if not image_path.exists():
+            raise FileNotFoundError(f"Image file not found: {image_path}")
+        
+        # Check supported formats
+        supported_formats = {'.png', '.jpg', '.jpeg', '.gif', '.webp'}
+        if image_path.suffix.lower() not in supported_formats:
+            raise ValueError(f"Unsupported image format: {image_path.suffix}")
+        
+        # Read and encode image
+        with open(image_path, 'rb') as image_file:
+            encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
+            
+        print(f"Successfully processed image: {image_path.name}")
+        return encoded_string
+        
+    except Exception as e:
+        print(f"Error processing image {image_path}: {str(e)}")
+        return None
+
+def parse_multimodal_input(user_input: str) -> tuple:
+    """
+    Parse user input to extract text and image file paths
+    Supports syntax: 'image:/path/to/file.png' or 'img:/path/to/file.png'
+    Returns: (clean_text, list_of_image_paths)
+    """
+    # Pattern to match image references
+    image_pattern = r'(?:image?:|img:)([^\s]+)'
+    
+    # Find all image references
+    image_matches = re.findall(image_pattern, user_input, re.IGNORECASE)
+    
+    # Remove image references from text
+    clean_text = re.sub(image_pattern, '', user_input, flags=re.IGNORECASE).strip()
+    
+    return clean_text, image_matches
+
 # Load chat history on startup
 chat_history = load_chat_history()
 
@@ -153,14 +207,43 @@ rag_agent = graph.compile()
 
 def running_agent():
     print("\n=== RAG AGENT===")
+    print("Tip: Use 'image:/path/to/file.png' to include images in your query")
     
     while True:
         user_input = input("\nWhat is your question: ")
         if user_input.lower() in ['exit', 'quit']:
             save_chat_history(chat_history)
             break
+        
+        # Parse input for multi-modal content
+        clean_text, image_paths = parse_multimodal_input(user_input)
+        
+        # Create message content
+        if image_paths:
+            # Multi-modal message with text and images
+            message_content = [{"type": "text", "text": clean_text}]
             
-        chat_history.append(HumanMessage(content=user_input))
+            for image_path in image_paths:
+                base64_image = process_image_to_base64(image_path)
+                if base64_image:
+                    # Determine image format for proper encoding
+                    image_format = Path(image_path).suffix.lower().replace('.', '')
+                    if image_format == 'jpg':
+                        image_format = 'jpeg'
+                    
+                    message_content.append({
+                        "type": "image_url",
+                        "image_url": f"data:image/{image_format};base64,{base64_image}"
+                    })
+                else:
+                    print(f"Skipping invalid image: {image_path}")
+            
+            human_message = HumanMessage(content=message_content)
+        else:
+            # Text-only message (backward compatibility)
+            human_message = HumanMessage(content=user_input)
+        
+        chat_history.append(human_message)
         result = rag_agent.invoke({"messages": chat_history})
         
         print("\n=== ANSWER ===")
