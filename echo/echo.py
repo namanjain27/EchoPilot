@@ -2,17 +2,19 @@ from dotenv import load_dotenv
 import os
 from langgraph.graph import StateGraph, END
 from typing import TypedDict, Annotated, Sequence
-from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage, ToolMessage
+from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage, ToolMessage, AIMessage
 from operator import add as add_messages
 from langchain.chat_models import init_chat_model
 from langchain_core.tools import tool
 from jira_tool import JiraTool
 import services
+from chat_mgmt import save_chat_history, load_chat_history 
 
 load_dotenv()
 
 import getpass
 import os
+
 
 if not os.environ.get("GOOGLE_API_KEY"):
   os.environ["GOOGLE_API_KEY"] = getpass.getpass("Enter API key for Google Gemini: ")
@@ -77,15 +79,16 @@ def should_continue(state: AgentState):
     if (hasattr(result, 'tool_calls') and len(result.tool_calls) > 0):
         return True
     else:
-        chat_history.append(result) # saving only the final AI response
+        chat_history.append(AIMessage(content=result)) # saving only the final AI response
         return False
 
 
 system_prompt = """
-You are an intelligent AI assistant who answers questions about Stock Market Performance in 2024 based on the PDF document loaded into your knowledge base.
-Use the retriever tool available to answer questions about the stock market performance data. You can make multiple calls if needed.
-If you need to look up some information before asking a follow up question, you are allowed to do that!
+You are an intelligent AI assistant who answers questions based on the documents in your knowledge base.
+Use the retriever tool available to get the trusted answer. You can make multiple calls if needed. 
+If you need to look up some information before asking a follow up question, you are allowed to do that! If you do not find the proper answer in the knowledge base then just tell the user and ask to create a service ticket for the firm to add the relevant topic documents for future.
 Please always cite the specific parts of the documents you use in your answers.
+Answer the latest query from the user. Earlier chat messages are just for context of past conversation. 
 """
 
 
@@ -94,8 +97,7 @@ tools_dict = {our_tool.name: our_tool for our_tool in tools} # Creating a dictio
 # LLM Agent
 def call_llm(state: AgentState) -> AgentState:
     """Function to call the LLM with the current state."""
-    messages = list(state['messages'])
-    messages = [SystemMessage(content=system_prompt)] + messages
+    messages = [SystemMessage(content=system_prompt)] + list(state['messages'])
     message = llm.invoke(messages)
     return {'messages': [message]}
 
@@ -124,8 +126,8 @@ def take_action(state: AgentState) -> AgentState:
     print("Tools Execution Complete. Back to the model!")
     return {'messages': results}
 
-# if chat file exists then take it else empty
-chat_history = []
+# Load chat history on startup
+chat_history = load_chat_history()
 
 graph = StateGraph(AgentState)
 graph.add_node("llm", call_llm)
@@ -143,18 +145,15 @@ rag_agent = graph.compile()
 
 
 def running_agent():
-    print("\\n=== RAG AGENT===")
+    print("\n=== RAG AGENT===")
     
     while True:
-        print(chat_history)
-        print('\n\n')
         user_input = input("\nWhat is your question: ")
         if user_input.lower() in ['exit', 'quit']:
-            # save the chat_history 
+            save_chat_history(chat_history)
             break
             
-        messages = [HumanMessage(content=user_input)] # converts back to a HumanMessage type
-        chat_history.append(messages[0])
+        chat_history.append(HumanMessage(content=user_input))
         result = rag_agent.invoke({"messages": chat_history})
         
         print("\n=== ANSWER ===")
