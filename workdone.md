@@ -29,3 +29,11 @@
 - Enhanced `running_agent()` to handle multi-modal HumanMessage content arrays with text and base64-encoded images
 - Updated system prompt to include image analysis capabilities and decision flow for visual content
 - No library changes required - leverages existing ChatGoogleGenerativeAI multi-modal support
+
+## Comprehensive Multi-File Support Extension
+- Extended multi-modal capabilities to support documents: PDF, TXT, MD, DOCX alongside existing image support
+- Added `process_document_to_text()` function leveraging existing data_ingestion processors for real-time text extraction
+- Enhanced `parse_multimodal_input()` to handle both images and documents with extended syntax: pdf:, txt:, md:, doc:
+- Updated `running_agent()` for hybrid message construction combining document text content with image base64 encoding
+- Supports complex queries like "Compare report pdf:/quarterly.pdf with chart image:/sales.png and notes txt:/meeting.txt"
+- Real-time document processing eliminates vector store delays while maintaining full context analysis capability

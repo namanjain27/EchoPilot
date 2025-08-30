@@ -1,7 +1,5 @@
 from dotenv import load_dotenv
 import os
-import base64
-import re
 from pathlib import Path
 from langgraph.graph import StateGraph, END
 from typing import TypedDict, Annotated, Sequence
@@ -11,7 +9,8 @@ from langchain.chat_models import init_chat_model
 from langchain_core.tools import tool
 from jira_tool import JiraTool
 import services
-from chat_mgmt import save_chat_history, load_chat_history 
+from chat_mgmt import save_chat_history, load_chat_history
+from multiModalInputService import process_image_to_base64, process_document_to_text, parse_multimodal_input
 
 load_dotenv()
 
@@ -87,10 +86,9 @@ def should_continue(state: AgentState):
 
 
 system_prompt = """
-You are an intelligent AI assistant who answers questions based on the documents in your knowledge base and can analyze images.
-Use the retriever tool to get trusted answers, and you can make multiple calls if needed.
-Always cite the specific passages you use. Answer only the latest user query (earlier chats are context).
-
+You are an intelligent AI assistant who answers questions based on the documents in your knowledge base, analyze images and perform tool calling. 
+Use the retriever tool to get trusted answers, and you can make multiple calls if needed. Answer only the latest user query (earlier chats are context).
+Always ask permission before ticket creation.
 When images are provided:
 - Analyze them thoroughly and describe relevant details
 - Connect image content to knowledge base information when applicable
@@ -98,7 +96,7 @@ When images are provided:
 
 Decision flow:
 1. First check intent (query, complaint, service/feature request), as well as urgency and sentiment (these become ticket labels if a ticket is created).
-2. If query → analyze any provided images, try a simple RAG answer with retriever. If not found, offer to create a ticket.
+2. If query → analyze any provided images, try a simple RAG answer with retriever. If not found, offer to create a ticket to add missing files into knowledge base.
 3. If complaint →
 3.1. If valid per KB or supported by image evidence → offer to create a complaint ticket.
 3.2. If invalid per KB → explain reasons with citations.
@@ -141,51 +139,6 @@ def take_action(state: AgentState) -> AgentState:
     print("Tools Execution Complete. Back to the model!")
     return {'messages': results}
 
-# Image processing helper function
-def process_image_to_base64(image_path: str) -> str:
-    """
-    Convert image file to base64 string for Gemini multi-modal input
-    Supports: PNG, JPG, JPEG, GIF, WEBP formats
-    """
-    try:
-        image_path = Path(image_path)
-        
-        # Validate file exists
-        if not image_path.exists():
-            raise FileNotFoundError(f"Image file not found: {image_path}")
-        
-        # Check supported formats
-        supported_formats = {'.png', '.jpg', '.jpeg', '.gif', '.webp'}
-        if image_path.suffix.lower() not in supported_formats:
-            raise ValueError(f"Unsupported image format: {image_path.suffix}")
-        
-        # Read and encode image
-        with open(image_path, 'rb') as image_file:
-            encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
-            
-        print(f"Successfully processed image: {image_path.name}")
-        return encoded_string
-        
-    except Exception as e:
-        print(f"Error processing image {image_path}: {str(e)}")
-        return None
-
-def parse_multimodal_input(user_input: str) -> tuple:
-    """
-    Parse user input to extract text and image file paths
-    Supports syntax: 'image:/path/to/file.png' or 'img:/path/to/file.png'
-    Returns: (clean_text, list_of_image_paths)
-    """
-    # Pattern to match image references
-    image_pattern = r'(?:image?:|img:)([^\s]+)'
-    
-    # Find all image references
-    image_matches = re.findall(image_pattern, user_input, re.IGNORECASE)
-    
-    # Remove image references from text
-    clean_text = re.sub(image_pattern, '', user_input, flags=re.IGNORECASE).strip()
-    
-    return clean_text, image_matches
 
 # Load chat history on startup
 chat_history = load_chat_history()
@@ -207,7 +160,9 @@ rag_agent = graph.compile()
 
 def running_agent():
     print("\n=== RAG AGENT===")
-    print("Tip: Use 'image:/path/to/file.png' to include images in your query")
+    print("Tip: Include files in your query using:")
+    print("  Images: 'image:/path/to/chart.png' or 'img:/path/to/screenshot.jpg'")
+    print("  Documents: 'pdf:/path/to/report.pdf', 'txt:/path/to/notes.txt', 'md:/path/to/readme.md', 'doc:/path/to/file.docx'")
     
     while True:
         user_input = input("\nWhat is your question: ")
@@ -216,13 +171,28 @@ def running_agent():
             break
         
         # Parse input for multi-modal content
-        clean_text, image_paths = parse_multimodal_input(user_input)
+        clean_text, image_paths, doc_paths = parse_multimodal_input(user_input)
+        
+        # Build comprehensive text content combining user query with document content
+        full_text_content = clean_text
+        
+        # Process documents and add their content to the text
+        if doc_paths:
+            full_text_content += "\n\n--- Document Content ---\n"
+            for doc_path in doc_paths:
+                doc_text = process_document_to_text(doc_path)
+                if doc_text:
+                    file_name = Path(doc_path).name
+                    full_text_content += f"\n[From {file_name}]:\n{doc_text}\n"
+                else:
+                    print(f"Skipping invalid document: {doc_path}")
         
         # Create message content
-        if image_paths:
+        if image_paths or doc_paths:
             # Multi-modal message with text and images
-            message_content = [{"type": "text", "text": clean_text}]
+            message_content = [{"type": "text", "text": full_text_content}]
             
+            # Add images as separate content items
             for image_path in image_paths:
                 base64_image = process_image_to_base64(image_path)
                 if base64_image:
