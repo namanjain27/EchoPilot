@@ -16,3 +16,8 @@
 - Chat history is now automatically loaded on app startup and saved on exit (quit/exit commands)
 - Supports both HumanMessage and AIMessage types for complete conversation persistence
 - Fixed AIMessage content extraction bug in should_continue function by accessing result.content instead of passing entire result object
+
+## Data Ingestion Updates
+- Modified `ingest_file_to_vectordb()` to accept multiple file paths (string or list)
+- Added error handling to skip unsupported/missing files and continue processing others
+- Updated main section to handle comma-separated file inputs for batch processing

@@ -36,18 +36,16 @@ def extract_txt(file_path) -> list:
     return loader.load()  # returns List[Document]
 
 ## ----------main ingestion---------
-def ingest_file_to_vectordb(file_path: str) -> None:
+def ingest_file_to_vectordb(file_paths) -> None:
     """
-    Main function to ingest a file into ChromaDB vector store
+    Main function to ingest one or multiple files into ChromaDB vector store
     Supports: PDF, DOCX, TXT, MD file extensions
     
     Args:
-        file_path (str): Path to the file to ingest
+        file_paths (str or list): Path(s) to the file(s) to ingest
         
-    Raises:
-        FileNotFoundError: If file doesn't exist
-        ValueError: If file extension is not supported
-        Exception: For other processing errors
+    Note:
+        Skips unsupported or missing files and continues processing others
     """
     # Supported file processors mapping
     supported_types = {
@@ -57,48 +55,59 @@ def ingest_file_to_vectordb(file_path: str) -> None:
         '.md': extract_txt
     }
     
-    file_path = Path(file_path)
+    # Convert single file path to list for uniform processing
+    if isinstance(file_paths, str):
+        file_paths = [file_paths]
     
-    # Check if file exists
-    if not os.path.exists(file_path):
-        raise FileNotFoundError(f"File not found: {file_path}")
+    successful_files = []
     
-    file_extension = file_path.suffix.lower()
+    for file_path in file_paths:
+        try:
+            file_path = Path(file_path)
+            
+            # Check if file exists
+            if not os.path.exists(file_path):
+                print(f"Skipping: File not found - {file_path}")
+                continue
+            
+            file_extension = file_path.suffix.lower()
+            
+            # Check if file extension is supported
+            if file_extension not in supported_types:
+                print(f"Skipping: Unsupported file type - {file_path}")
+                continue
+            
+            # Process file based on type
+            processor = supported_types[file_extension]
+            file_content = processor(str(file_path))
+            
+            if not file_content:
+                logger.warning(f"No content extracted from: {file_path}")
+                continue
+            
+            # Chunking Process initiate
+            text_splitter = RecursiveCharacterTextSplitter(
+                chunk_size=1000,
+                chunk_overlap=200
+            )
+            
+            pages_split = text_splitter.split_documents(file_content)
+            
+            # Store in vector DB
+            vector_store.add_documents(documents = pages_split)
+            print(f"Successfully ingested {file_path.name}")
+            successful_files.append(file_path.name)
+            
+        except Exception as e:
+            print(f"Error processing {file_path}: {str(e)}")
+            continue
     
-    # Check if file extension is supported
-    if file_extension not in supported_types:
-        raise ValueError(f"Unsupported file extension: {file_extension}. Supported types: {list(supported_types.keys())}")
-    
-    # Process file based on type
-    processor = supported_types[file_extension]
-    file_content = processor(str(file_path))
-    
-    if not file_content:
-        logger.warning(f"No content extracted from: {file_path}")
-        return
-    
-    # Chunking Process initiate
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1000,
-        chunk_overlap=200
-    )
-    
-    pages_split = text_splitter.split_documents(file_content)
-    
-    # Store in vector DB
-    try:
-        vector_store.add_documents(documents = pages_split)
-        print(f"Successfully ingested {file_path.name} into ChromaDB vector store!")
-        
-    except Exception as e:
-        print(f"Error setting up ChromaDB: {str(e)}")
-        raise
+    if successful_files:
+        print(f"Total files processed: {len(successful_files)}")
+    else:
+        print("No files were successfully processed")
         
 if __name__ == "__main__":
-    file_path = input("Give the file path to ingest: ")
-    try:
-        ingest_file_to_vectordb(file_path)
-    except (FileNotFoundError, ValueError) as e:
-        print(f"Error: {e}")
-    except Exception as e:
-        print(f"Unexpected error: {e}")
+    file_paths_input = input("Give the file path(s) to ingest (comma-separated for multiple): ")
+    file_paths = [path.strip() for path in file_paths_input.split(',')]
+    ingest_file_to_vectordb(file_paths)
