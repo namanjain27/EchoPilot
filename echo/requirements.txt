@@ -7,7 +7,8 @@ langgraph
 sentence-transformers
 
 # AI/ML dependencies
-google-generativeai>=0.3.0
+langchain-google-genai
+google-ai-generativelanguage==0.6.18
 
 pypdf
 docx2txt

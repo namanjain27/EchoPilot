@@ -7,7 +7,7 @@ from operator import add as add_messages
 from langchain.chat_models import init_chat_model
 from langchain_core.tools import tool
 from jira_tool import JiraTool
-import data_ingestion
+import services
 
 load_dotenv()
 
@@ -18,7 +18,7 @@ if not os.environ.get("GOOGLE_API_KEY"):
   os.environ["GOOGLE_API_KEY"] = getpass.getpass("Enter API key for Google Gemini: ")
 
 # Now we create our retriever 
-retriever = data_ingestion.vectorstore.as_retriever(
+retriever = services.vector_store.as_retriever(
     search_type="similarity",
     search_kwargs={"k": 5} # K is the amount of chunks to return
 )
@@ -154,7 +154,7 @@ def running_agent():
             break
             
         messages = [HumanMessage(content=user_input)] # converts back to a HumanMessage type
-        chat_history.append[messages]
+        chat_history.append(messages[0])
         result = rag_agent.invoke({"messages": chat_history})
         
         print("\n=== ANSWER ===")
