@@ -74,7 +74,11 @@ class AgentState(TypedDict):
 def should_continue(state: AgentState):
     """Check if the last message contains tool calls."""
     result = state['messages'][-1]
-    return hasattr(result, 'tool_calls') and len(result.tool_calls) > 0
+    if (hasattr(result, 'tool_calls') and len(result.tool_calls) > 0):
+        return True
+    else:
+        chat_history.append(result) # saving only the final AI response
+        return False
 
 
 system_prompt = """
@@ -120,6 +124,8 @@ def take_action(state: AgentState) -> AgentState:
     print("Tools Execution Complete. Back to the model!")
     return {'messages': results}
 
+# if chat file exists then take it else empty
+chat_history = []
 
 graph = StateGraph(AgentState)
 graph.add_node("llm", call_llm)
@@ -140,13 +146,16 @@ def running_agent():
     print("\\n=== RAG AGENT===")
     
     while True:
+        print(chat_history)
+        print('\n\n')
         user_input = input("\nWhat is your question: ")
         if user_input.lower() in ['exit', 'quit']:
+            # save the chat_history 
             break
             
         messages = [HumanMessage(content=user_input)] # converts back to a HumanMessage type
-
-        result = rag_agent.invoke({"messages": messages})
+        chat_history.append[messages]
+        result = rag_agent.invoke({"messages": chat_history})
         
         print("\n=== ANSWER ===")
         print(result['messages'][-1].content)
