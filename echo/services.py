@@ -16,7 +16,7 @@ class SentenceTransformerEmbeddings:
 embedding_model = SentenceTransformerEmbeddings('sentence-transformers/all-MiniLM-L6-v2')
 
 persist_directory = 'knowledgeBase'
-db_collection_name = "general_kb"
+db_collection_name = "general_rentomojo"
 
 # Create directory if it doesn't exist
 if not os.path.exists(persist_directory):

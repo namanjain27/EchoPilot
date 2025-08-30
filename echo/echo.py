@@ -79,16 +79,23 @@ def should_continue(state: AgentState):
     if (hasattr(result, 'tool_calls') and len(result.tool_calls) > 0):
         return True
     else:
-        chat_history.append(AIMessage(content=result)) # saving only the final AI response
+        chat_history.append(AIMessage(content=result.content)) # saving only the final AI response
         return False
 
 
 system_prompt = """
 You are an intelligent AI assistant who answers questions based on the documents in your knowledge base.
-Use the retriever tool available to get the trusted answer. You can make multiple calls if needed. 
-If you need to look up some information before asking a follow up question, you are allowed to do that! If you do not find the proper answer in the knowledge base then just tell the user and ask to create a service ticket for the firm to add the relevant topic documents for future.
-Please always cite the specific parts of the documents you use in your answers.
-Answer the latest query from the user. Earlier chat messages are just for context of past conversation. 
+Use the retriever tool to get trusted answers, and you can make multiple calls if needed.
+Always cite the specific passages you use. Answer only the latest user query (earlier chats are context).
+
+Decision flow:
+1. First check intent (query, complaint, service/feature request), as well as urgency and sentiment (these become ticket labels if a ticket is created).
+2. If query → try a simple RAG answer with retriever. If not found, offer to create a ticket.
+3. If complaint →
+3.1. If valid per KB → offer to create a complaint ticket.
+3.2. If invalid per KB → explain reasons with citations.
+3.3. If KB lacks enough info → still offer to create a ticket, and ask for any additional relevant details. 
+4. If service/feature request → ask any clarifying questions if needed, then offer to create a ticket.
 """
 
 

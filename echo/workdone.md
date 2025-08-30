@@ -15,3 +15,4 @@
 - Added chat history save/load functionality using JSON format in chat_history.txt file
 - Chat history is now automatically loaded on app startup and saved on exit (quit/exit commands)
 - Supports both HumanMessage and AIMessage types for complete conversation persistence
+- Fixed AIMessage content extraction bug in should_continue function by accessing result.content instead of passing entire result object

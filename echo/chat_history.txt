@@ -1,0 +1,8 @@
+{"type": "human", "content": "tell me about the amazon stocks in 2024"}
+{"type": "ai", "content": "I am sorry, but the provided documents do not contain information about Amazon's stock performance in 2024. The documents primarily cover investor relations FAQs, historical information about Amazon's IPO and stock splits, and contact information for investor relations.\n\nWould you like me to create a service ticket for the firm to add relevant documents about Amazon's 2024 stock performance for future reference?"}
+{"type": "human", "content": "yes pls"}
+{"type": "ai", "content": "I have successfully created a JIRA ticket (PILOT-8) to request the addition of documents concerning Amazon's 2024 stock performance."}
+{"type": "human", "content": "can you tell me the status of my last service request "}
+{"type": "ai", "content": "I apologize, but I cannot directly check the status of your last service request. I can create JIRA tickets, but I do not have the functionality to retrieve their current status."}
+{"type": "human", "content": "tell me the ticket id of it"}
+{"type": "ai", "content": "The ticket ID for your last service request is PILOT-8."}
