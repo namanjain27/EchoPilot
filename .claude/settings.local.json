@@ -1,18 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(mkdir:*)",
-      "Bash(grep:*)",
-      "Bash(find:*)",
-      "WebFetch(domain:ir.aboutamazon.com)",
-      "WebFetch(domain:ir.aboutamazon.com)",
-      "Bash(python:*)",
-      "Bash(python:*)",
-      "Bash(pip install:*)",
-      "Bash(apt:*)",
-      "Bash(apt install:*)",
-      "WebFetch(domain:docs.streamlit.io)"
+      "Bash(python:*)"
     ],
-    "deny": []
+    "deny": [],
+    "ask": []
   }
 }
