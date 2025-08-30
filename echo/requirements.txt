@@ -1,0 +1,19 @@
+
+langchain_community
+langchain_core
+langchain_huggingface
+langchain-chroma
+langgraph
+sentence-transformers
+
+# AI/ML dependencies
+google-generativeai>=0.3.0
+
+pypdf
+docx2txt
+
+# API integrations
+jira>=3.5.0
+
+# Utilities
+python-dotenv>=1.0.0

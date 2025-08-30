@@ -1,5 +1,4 @@
 import os
-from langchain_huggingface.embeddings import HuggingFaceEmbeddings
 from langchain_community.document_loaders import PyPDFLoader, TextLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_chroma import Chroma
@@ -7,11 +6,13 @@ import logging
 import docx2txt
 from pathlib import Path
 from langchain.schema import Document
+from services import vector_store
 
 ## want this to be a separate layer for data ingestion into the vector db - chromaDB
 ## a function that takes multi-file input and stores them in the vector db
 logger = logging.getLogger(__name__)
 
+## ------Extraction processors--------
 def extract_docx(file_path) -> list:
     """Extract text from DOCX files and return as Document list"""
     text = docx2txt.process(file_path) 
@@ -34,6 +35,7 @@ def extract_txt(file_path) -> list:
     loader = TextLoader(file_path, encoding="utf-8")
     return loader.load()  # returns List[Document]
 
+## ----------main ingestion---------
 def ingest_file_to_vectordb(file_path: str) -> None:
     """
     Main function to ingest a file into ChromaDB vector store
@@ -83,31 +85,15 @@ def ingest_file_to_vectordb(file_path: str) -> None:
     
     pages_split = text_splitter.split_documents(file_content)
     
-    persist_directory = r"D:\codes\EchoPilot\knowledgeBaseFiles"
-    collection_name = "kb_general"
-    
-    # Create directory if it doesn't exist
-    if not os.path.exists(persist_directory):
-        os.makedirs(persist_directory)
-    
-    # Create embeddings
-    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-mpnet-base-v2")
-    
     # Store in vector DB
     try:
-        vectorstore = Chroma.from_documents(
-            documents=pages_split,
-            embedding=embeddings,
-            persist_directory=persist_directory,
-            collection_name=collection_name
-        )
+        vector_store.add_documents(documents = pages_split)
         print(f"Successfully ingested {file_path.name} into ChromaDB vector store!")
         
     except Exception as e:
         print(f"Error setting up ChromaDB: {str(e)}")
         raise
-
-# Example usage (can be removed or commented out for module use)
+        
 if __name__ == "__main__":
     file_path = input("Give the file path to ingest: ")
     try:
