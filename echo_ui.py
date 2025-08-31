@@ -139,19 +139,63 @@ Decision flow:
     
     return _rag_agent
 
-def process_user_message(message: str) -> str:
-    """Process single text message through agent and return AI response as string"""
+def process_user_message(message: str, image_files=None, doc_files=None) -> str:
+    """Process multi-modal message through agent and return AI response as string"""
     global _current_chat_messages, _old_chat_summary
     
     if _rag_agent is None:
         initialize_agent()
     
     try:
-        # Parse input for multi-modal content (text only for Phase 1)
+        # Parse input for multi-modal content
         clean_text, image_paths, doc_paths = parse_multimodal_input(message)
         
-        # For Phase 1, we'll only handle text input
-        human_message = HumanMessage(content=clean_text)
+        # Handle uploaded files from Streamlit
+        if image_files:
+            image_paths.extend(image_files)
+        if doc_files:
+            doc_paths.extend(doc_files)
+        
+        # Build comprehensive text content combining user query with document content
+        full_text_content = clean_text
+        
+        # Process documents and add their content to the text
+        if doc_paths:
+            full_text_content += "\n\n--- Document Content ---\n"
+            for doc_path in doc_paths:
+                doc_text = process_document_to_text(doc_path)
+                if doc_text:
+                    file_name = Path(doc_path).name
+                    full_text_content += f"\n[From {file_name}]:\n{doc_text}\n"
+                else:
+                    print(f"Skipping invalid document: {doc_path}")
+        
+        # Create message content
+        if image_paths or doc_paths:
+            # Multi-modal message with text and images
+            message_content = [{"type": "text", "text": full_text_content}]
+            
+            # Add images as separate content items
+            for image_path in image_paths:
+                base64_image = process_image_to_base64(image_path)
+                if base64_image:
+                    # Determine image format for proper encoding
+                    image_format = Path(image_path).suffix.lower().replace('.', '')
+                    if image_format == 'jpg':
+                        image_format = 'jpeg'
+                    
+                    message_content.append({
+                        "type": "image_url",
+                        "image_url": f"data:image/{image_format};base64,{base64_image}"
+                    })
+                else:
+                    print(f"Skipping invalid image: {image_path}")
+            
+            human_message = HumanMessage(content=message_content)
+        else:
+            # Text-only message
+            human_message = HumanMessage(content=full_text_content)
+        
         _current_chat_messages.append(human_message)
         
         # Create messages list with summary context
@@ -186,30 +230,101 @@ def get_vector_store_status() -> dict:
     except Exception as e:
         return {"status": "error", "approx_docs": 0, "error": str(e)}
 
-def save_current_chat_session():
-    """Save current chat session to summary"""
+def end_chat_session():
+    """End current chat session gracefully with summary"""
     global _current_chat_messages, _old_chat_summary
     
     if not _current_chat_messages:
-        return
+        return {"success": True, "message": "No active chat session to end"}
     
     try:
+        # Import the summarization function from echo.py
         from echo import summarize_current_chat
+        
+        # Create summary of current chat
         updated_summary = summarize_current_chat(_current_chat_messages, _old_chat_summary)
+        
+        # Save the updated summary
         save_chat_summary(updated_summary)
         
-        # Reset current chat
+        # Store message count for feedback
+        message_count = len(_current_chat_messages)
+        
+        # Reset current chat and update summary
         _current_chat_messages.clear()
         _old_chat_summary = updated_summary
         
+        return {
+            "success": True, 
+            "message": f"Chat session ended successfully. {message_count} messages summarized and saved."
+        }
+        
     except Exception as e:
-        print(f"Error saving chat session: {str(e)}")
+        return {
+            "success": False,
+            "message": f"Error ending chat session: {str(e)}"
+        }
+
+def save_current_chat_session():
+    """Save current chat session to summary (legacy function)"""
+    return end_chat_session()
 
 def clear_chat_session():
-    """Clear current chat session"""
+    """Clear current chat session without saving"""
     global _current_chat_messages
     _current_chat_messages.clear()
 
 def get_current_chat_messages():
     """Get current chat messages for display"""
     return _current_chat_messages.copy()
+
+def export_chat_history(chat_history, format_type="json"):
+    """Export chat history to downloadable format"""
+    import json
+    from datetime import datetime
+    
+    try:
+        export_data = {
+            "export_timestamp": datetime.now().isoformat(),
+            "total_messages": len(chat_history),
+            "chat_history": []
+        }
+        
+        for message in chat_history:
+            export_message = {
+                "role": message["role"],
+                "content": message["content"],
+                "timestamp": datetime.now().isoformat()  # We don't have original timestamps
+            }
+            
+            # Include attachment info if present
+            if "attachments" in message:
+                export_message["attachments"] = [
+                    {"type": att["type"], "name": att["name"]} 
+                    for att in message["attachments"]
+                ]
+            
+            export_data["chat_history"].append(export_message)
+        
+        if format_type == "json":
+            return json.dumps(export_data, indent=2)
+        elif format_type == "txt":
+            # Plain text format
+            text_export = f"EchoPilot Chat Export - {export_data['export_timestamp']}\n"
+            text_export += f"Total Messages: {export_data['total_messages']}\n\n"
+            text_export += "=" * 50 + "\n\n"
+            
+            for i, message in enumerate(export_data["chat_history"], 1):
+                role = "User" if message["role"] == "user" else "Assistant"
+                text_export += f"Message {i} - {role}:\n"
+                text_export += f"{message['content']}\n"
+                
+                if "attachments" in message:
+                    text_export += f"Attachments: {', '.join([att['name'] for att in message['attachments']])}\n"
+                
+                text_export += "\n" + "-" * 30 + "\n\n"
+            
+            return text_export
+        
+    except Exception as e:
+        return f"Error exporting chat: {str(e)}"
