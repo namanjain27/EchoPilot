@@ -30,11 +30,11 @@ retriever = services.vector_store.as_retriever(
 @tool
 def retriever_tool(query: str) -> str:
     """
-    This tool searches and returns the information from the Stock Market Performance 2024 document.
+    This tool searches and returns the information from the rentomojo knowledge base.
     """
 
     docs = retriever.invoke(query)
-    if not docs: return "I found no relevant information in the Stock Market Performance 2024 document."
+    if not docs: return "I found no relevant information in my knowledge base."
     
     results = []
     for i, doc in enumerate(docs):
@@ -81,15 +81,15 @@ def should_continue(state: AgentState):
     if (hasattr(result, 'tool_calls') and len(result.tool_calls) > 0):
         return True
     else:
-        chat_history.append(AIMessage(content=result.content)) # saving only the final AI response
+        current_chat_messages.append(AIMessage(content=result.content)) # saving only the final AI response
         return False
 
 
-system_prompt = """
-You are an intelligent AI assistant who answers questions based on the documents in your knowledge base, analyze images and perform tool calling. 
-Use the retriever tool to get trusted answers, and you can make multiple calls if needed. Answer only the latest user query (earlier chats are context).
+system_prompt_llm = """
+You are an intelligent AI assistant who answers questions based on the documents in your knowledge base and perform tool calling. User query can contain images and extracted data from documents.  
+Use the retriever tool to get trusted answers, and you can make multiple calls if needed. Answer only the latest user query (chat summary are for old context).
 Always ask permission before ticket creation.
-When images are provided:
+When images/added documents are provided:
 - Analyze them thoroughly and describe relevant details
 - Connect image content to knowledge base information when applicable
 - Use image analysis to better understand customer issues or requests
@@ -110,7 +110,7 @@ tools_dict = {our_tool.name: our_tool for our_tool in tools} # Creating a dictio
 # LLM Agent
 def call_llm(state: AgentState) -> AgentState:
     """Function to call the LLM with the current state."""
-    messages = [SystemMessage(content=system_prompt)] + list(state['messages'])
+    messages = [SystemMessage(content=system_prompt_llm)] + list(state['messages'])
     message = llm.invoke(messages)
     return {'messages': [message]}
 
@@ -141,7 +141,17 @@ def take_action(state: AgentState) -> AgentState:
 
 
 # Load chat history on startup
-chat_history = load_chat_history()
+current_chat_messages = []
+old_chat_summary = load_chat_summary()
+
+def summarize_current_chat(current_chat_messages, old_chat_summary):
+    # use llm to summarize it and keep the much needed information only. User query -> what resolve did we provide
+    # create prompt for llm
+    system_prompt = """summarize the chat conversation provided. Contain the minimal information regarding user query and the AI response provided for resolution. 
+    Evaluate and grade the chat session in terms of extent of query resolution [in A/B/C]"""
+
+    current_chat_summary = llm.invoke([SystemMessage(content=system_prompt)] + {current_chat_messages})
+    old_chat_summary.append("\n\n" + {current_date_and_time} + current_chat_summary.content)
 
 graph = StateGraph(AgentState)
 graph.add_node("llm", call_llm)
@@ -167,7 +177,10 @@ def running_agent():
     while True:
         user_input = input("\nWhat is your question: ")
         if user_input.lower() in ['exit', 'quit']:
-            save_chat_history(chat_history)
+            # summarize current chat
+            summarize_current_chat(current_chat_messages, old_chat_summary)
+            # add into old chat summary
+            save_chat_summary(old_chat_summary)
             break
         
         # Parse input for multi-modal content
@@ -213,8 +226,9 @@ def running_agent():
             # Text-only message (backward compatibility)
             human_message = HumanMessage(content=user_input)
         
-        chat_history.append(human_message)
-        result = rag_agent.invoke({"messages": chat_history})
+        user_query_with_summary = old_chat_summary.append("\n\n"+human_message)
+        current_chat_messages.append(human_message)
+        result = rag_agent.invoke({"messages": user_query_with_summary})
         
         print("\n=== ANSWER ===")
         print(result['messages'][-1].content)

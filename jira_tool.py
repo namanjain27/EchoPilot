@@ -35,7 +35,7 @@ class JiraTool:
             Args: 
                 summary: this would be the subject of the ticket. Keep it short and self-defining
                 desc: description should contain all the necessary details to help the associates resolve the issue
-                labels: always have 2 values being - mode (associate or customer) and type (service request, complaints or feature request)
+                labels: always have 4 values being - mode (associate or customer), type (service_request, complaints or feature_request), urgency (high, medium, low), sentiment (positive, neutral, negative)
             returns: ticket id as string if success. None if failed to create ticket.
         """
         if not self._jira_client or not self._project_key:
