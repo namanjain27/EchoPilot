@@ -1,6 +1,7 @@
 from dotenv import load_dotenv
 import os
 from pathlib import Path
+from datetime import datetime
 from langgraph.graph import StateGraph, END
 from typing import TypedDict, Annotated, Sequence
 from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage, ToolMessage, AIMessage
@@ -9,7 +10,7 @@ from langchain.chat_models import init_chat_model
 from langchain_core.tools import tool
 from jira_tool import JiraTool
 import services
-from chat_mgmt import save_chat_history, load_chat_history
+from chat_mgmt import load_chat_summary, save_chat_summary
 from multiModalInputService import process_image_to_base64, process_document_to_text, parse_multimodal_input
 
 load_dotenv()
@@ -67,9 +68,8 @@ def create_jira_ticket(summary: str, description: str, labels: str) -> str:
 
 tools = [retriever_tool, create_jira_ticket]
 
-
-llm = init_chat_model("gemini-2.5-flash", model_provider="google_genai").bind_tools(tools)
-
+base_llm = init_chat_model("gemini-2.5-flash", model_provider="google_genai")
+llm = base_llm.bind_tools(tools)
 
 class AgentState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], add_messages]
@@ -82,6 +82,7 @@ def should_continue(state: AgentState):
         return True
     else:
         current_chat_messages.append(AIMessage(content=result.content)) # saving only the final AI response
+        print(f"current chat \n:{current_chat_messages}\n")
         return False
 
 
@@ -145,13 +146,34 @@ current_chat_messages = []
 old_chat_summary = load_chat_summary()
 
 def summarize_current_chat(current_chat_messages, old_chat_summary):
-    # use llm to summarize it and keep the much needed information only. User query -> what resolve did we provide
-    # create prompt for llm
-    system_prompt = """summarize the chat conversation provided. Contain the minimal information regarding user query and the AI response provided for resolution. 
-    Evaluate and grade the chat session in terms of extent of query resolution [in A/B/C]"""
-
-    current_chat_summary = llm.invoke([SystemMessage(content=system_prompt)] + {current_chat_messages})
-    old_chat_summary.append("\n\n" + {current_date_and_time} + current_chat_summary.content)
+    """Summarize current chat session and append to old summary with timestamp"""
+    if not current_chat_messages: return old_chat_summary
+    
+    system_prompt = """Summarize the chat conversation provided. Include minimal but essential information.
+    1. Always keep format for complete chat: user query: {what was requested}, AI response: {resolution provided with any ticket id if generated}
+    2. Grade the chat session in terms of query resolution: A (fully resolved), B (partially resolved), C (unresolved)
+    Keep the summary concise but informative for future context."""
+    
+    chat_to_summarize = [SystemMessage(content=system_prompt)] + current_chat_messages
+    print(f"\n chat to summ: {chat_to_summarize}\n\n")
+    current_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        unbounded_llm = llm.bind_tools([])
+        current_chat_summary = unbounded_llm.invoke(chat_to_summarize)
+        
+        # Handle empty responses from Gemini
+        if not current_chat_summary or not current_chat_summary.content or not current_chat_summary.content.strip():
+            print("Warning: Gemini produced an empty response during summarization. Using fallback summary.")
+            fallback_summary = f"\n\n=== Chat Session ({current_timestamp}) ===\nModel gave empty response. Full chat {current_chat_messages}"
+            return old_chat_summary + fallback_summary
+        
+        session_summary = f"\n\n=== Chat Session ({current_timestamp}) ==={current_chat_summary.content}"
+        return old_chat_summary + session_summary
+        
+    except Exception as e:
+        print(f"Error during chat summarization: {str(e)}")
+        fallback_summary = f"\n\n=== Chat Session ({current_timestamp}) ===\nChat session occurred but summary failed due to error: {str(e)}"
+        return old_chat_summary + fallback_summary
 
 graph = StateGraph(AgentState)
 graph.add_node("llm", call_llm)
@@ -177,10 +199,10 @@ def running_agent():
     while True:
         user_input = input("\nWhat is your question: ")
         if user_input.lower() in ['exit', 'quit']:
-            # summarize current chat
-            summarize_current_chat(current_chat_messages, old_chat_summary)
-            # add into old chat summary
-            save_chat_summary(old_chat_summary)
+            # summarize current chat and update summary
+            updated_summary = summarize_current_chat(current_chat_messages, old_chat_summary)
+            # save updated summary
+            save_chat_summary(updated_summary)
             break
         
         # Parse input for multi-modal content
@@ -226,9 +248,20 @@ def running_agent():
             # Text-only message (backward compatibility)
             human_message = HumanMessage(content=user_input)
         
-        user_query_with_summary = old_chat_summary.append("\n\n"+human_message)
+        # Add human message to current chat
         current_chat_messages.append(human_message)
-        result = rag_agent.invoke({"messages": user_query_with_summary})
+        
+        # Create messages list with summary context, current chat messages, and new message
+        messages_with_context = []
+        if old_chat_summary.strip():
+            messages_with_context.append(HumanMessage(content=f"Previous chat context: {old_chat_summary}"))
+        
+        # Add current ongoing chat messages for context
+        messages_with_context.extend(current_chat_messages[:-1])  # Exclude the just-added human message to avoid duplication
+        messages_with_context.append(human_message)
+        
+        print(f"user_query:{messages_with_context}\n")
+        result = rag_agent.invoke({"messages": messages_with_context})
         
         print("\n=== ANSWER ===")
         print(result['messages'][-1].content)

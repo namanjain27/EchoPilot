@@ -1,0 +1,15 @@
+
+
+=== Chat Session (2025-08-31 18:10:15) ===
+If you need the exact amount for your specific order, please let me know your order ID or the product details.
+
+=== Chat Session (2025-08-31 18:23:45) ===
+
+=== Chat Session (2025-08-31 18:54:15) ===
+Model gave empty response. Full chat [HumanMessage(content='tell me about the referral program', additional_kwargs={}, response_metadata={}), AIMessage(content="RentoMojo offers a referral program where both the referrer and the friend can receive RentoMoney. Here's how it works:\n\n*   **For the Friend:** The friend must be a first-time customer and use the referrer's unique code for their first rental order. The monthly rental for this order must be INR 500 or higher to qualify for the referral bonus.\n*   **For the Referrer:** Upon successful delivery of the friend's order, the referrer receives Rs 400 in RentoMoney.\n*   **RentoMoney Usage:** RentoMoney can be used for monthly rental payments (excluding security deposits) and can be combined with other offers and discounts. It is non-transferable and cannot be converted to cash.\n*   **Important Notes:**\n    *   Only registered users can use RentoMoney.\n    *   Referrers cannot use the code of someone they have referred.\n    *   If the friend cancels their subscription before delivery, the referral bonus is cancelled for both parties.\n    *   There is a maximum referral bonus cap for a referrer, which may vary.\n    *   Funds can only be added to the RentoMoney account through referral bonuses.", additional_kwargs={}, response_metadata={}), HumanMessage(content='instead of friend can i offer it to a relative?', additional_kwargs={}, response_metadata={}), AIMessage(content='Yes, you can absolutely offer the referral to a relative! The term "friend" in the referral program is used generally to refer to anyone you refer who is a **first-time customer** and meets the other criteria (uses your unique code for their first rental order with a monthly rental of INR 500 or higher). The actual relationship (friend, relative, colleague, etc.) does not prevent them from being eligible for the program.', additional_kwargs={}, response_metadata={})]
+
+=== Chat Session (2025-08-31 19:02:09) ===
+
+To explore these packages and their specific discounts, you can visit the RentoMojo website or app. They often have different tiers and options depending on your needs.
+
+Do you want me to help you find a specific package or give you an example of what's available?
