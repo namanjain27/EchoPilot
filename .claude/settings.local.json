@@ -2,7 +2,12 @@
   "permissions": {
     "allow": [
       "Bash(python:*)",
-      "WebFetch(domain:python.langchain.com)"
+      "WebFetch(domain:python.langchain.com)",
+      "WebFetch(domain:docs.smith.langchain.com)",
+      "WebFetch(domain:community.latenode.com)",
+      "WebFetch(domain:community.latenode.com)",
+      "WebSearch",
+      "WebFetch(domain:docs.langchain.com)"
     ],
     "deny": [],
     "ask": []

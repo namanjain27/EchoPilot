@@ -35,6 +35,53 @@ def extract_txt(file_path) -> list:
     loader = TextLoader(file_path, encoding="utf-8")
     return loader.load()  # returns List[Document]
 
+def ingest_file_with_feedback(file_path: str) -> dict:
+    """Modified version of file ingestion that returns detailed status for UI"""
+    try:
+        file_path = Path(file_path)
+        file_name = file_path.name
+        
+        # Check if file exists
+        if not os.path.exists(file_path):
+            return {"success": False, "message": f"File not found: {file_name}", "file_name": file_name}
+        
+        # Supported file processors mapping
+        supported_types = {
+            '.pdf': extract_pdf,
+            '.docx': extract_docx,
+            '.txt': extract_txt,
+            '.md': extract_txt
+        }
+        
+        file_extension = file_path.suffix.lower()
+        
+        # Check if file extension is supported
+        if file_extension not in supported_types:
+            return {"success": False, "message": f"Unsupported file type: {file_extension}", "file_name": file_name}
+        
+        # Process file based on type
+        processor = supported_types[file_extension]
+        file_content = processor(str(file_path))
+        
+        if not file_content:
+            return {"success": False, "message": f"No content extracted from file", "file_name": file_name}
+        
+        # Chunking Process initiate
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=1000,
+            chunk_overlap=200
+        )
+        
+        pages_split = text_splitter.split_documents(file_content)
+        
+        # Store in vector DB
+        vector_store.add_documents(documents=pages_split)
+        
+        return {"success": True, "message": f"Successfully processed {len(pages_split)} chunks", "file_name": file_name}
+        
+    except Exception as e:
+        return {"success": False, "message": f"Error: {str(e)}", "file_name": file_path.name if file_path else "unknown"}
+
 ## ----------main ingestion---------
 def ingest_file_to_vectordb(file_paths) -> None:
     """
