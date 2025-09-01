@@ -23,6 +23,8 @@ def initialize_session_state():
         st.session_state.agent_initialized = False
     if 'uploaded_files' not in st.session_state:
         st.session_state.uploaded_files = []
+    if 'file_uploader_key' not in st.session_state:
+        st.session_state.file_uploader_key = 0
 
 def render_data_ingestion_section():
     """Render the data ingestion interface"""
@@ -112,7 +114,7 @@ def render_chat_section():
         type=['png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf', 'docx', 'txt', 'md'],
         accept_multiple_files=True,
         help="Supported: Images (PNG, JPG, JPEG, GIF, WEBP) and Documents (PDF, DOCX, TXT, MD)",
-        key="chat_file_uploader"
+        key=f"chat_file_uploader_{st.session_state.file_uploader_key}"
     )
     
     # Display uploaded files
@@ -164,8 +166,8 @@ def render_chat_section():
                 with chat_container:
                     st.chat_message("assistant").write(error_msg)
         
-        # Clear the file uploader after processing
-        st.session_state["chat_file_uploader"] = []
+        # Increment file uploader key to clear the widget
+        st.session_state.file_uploader_key += 1
         
         # Rerun to update the display
         st.rerun()

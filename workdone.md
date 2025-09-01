@@ -69,3 +69,4 @@
 - Added file uploader widget in chat tab supporting images (PNG, JPG, JPEG, GIF, WEBP) and documents (PDF, DOCX, TXT, MD)
 - Integrated with existing multiModalInputService.py functions using process_uploaded_files() for file processing
 - Updated message processing pipeline in echo_ui.py to handle combined text + image + document inputs for multi-modal LLM processing
+- Fixed Streamlit file uploader state modification error by using dynamic widget keys that increment after message processing
