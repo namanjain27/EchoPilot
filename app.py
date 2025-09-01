@@ -2,7 +2,7 @@ import streamlit as st
 import os
 from pathlib import Path
 import tempfile
-from echo_ui import initialize_agent, process_user_message, get_vector_store_status, clear_chat_session
+from echo_ui import initialize_agent, process_user_message, get_vector_store_status, clear_chat_session, save_current_chat_session
 from data_ingestion import ingest_file_with_feedback
 
 # Page configuration
@@ -172,11 +172,19 @@ def render_chat_section():
         # Rerun to update the display
         st.rerun()
     
-    # Clear chat button
-    if st.button("Clear Chat"):
-        st.session_state.chat_history.clear()
-        clear_chat_session()
-        st.rerun()
+    # End chat button
+    if st.button("End Chat"):
+        if st.session_state.chat_history:
+            with st.spinner("Saving chat session..."):
+                try:
+                    save_current_chat_session()
+                    st.session_state.chat_history.clear()
+                    st.success("✅ Chat session saved and ended successfully!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"❌ Error saving chat session: {str(e)}")
+        else:
+            st.info("ℹ️ No chat history to save.")
 
 def main():
     """Main application function"""
