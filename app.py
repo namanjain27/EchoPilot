@@ -31,11 +31,16 @@ def render_data_ingestion_section():
     st.header("📁 Data Ingestion")
     st.write("Upload files to add them to the knowledge base")
     
+    # Initialize file uploader key for data ingestion if not exists
+    if 'data_ingestion_uploader_key' not in st.session_state:
+        st.session_state.data_ingestion_uploader_key = 0
+    
     # File upload widget
     uploaded_file = st.file_uploader(
         "Choose a file",
         type=['pdf', 'docx', 'txt', 'md'],
-        help="Supported formats: PDF, DOCX, TXT, MD"
+        help="Supported formats: PDF, DOCX, TXT, MD",
+        key=f"data_ingestion_uploader_{st.session_state.data_ingestion_uploader_key}"
     )
     
     if uploaded_file is not None:
@@ -63,6 +68,10 @@ def render_data_ingestion_section():
                         os.unlink(tmp_file_path)
                     except:
                         pass
+                
+                # Clear the file uploader by incrementing the key
+                st.session_state.data_ingestion_uploader_key += 1
+                st.rerun()
     
     # Show vector store status
     st.subheader("Knowledge Base Status")
@@ -77,7 +86,15 @@ def render_data_ingestion_section():
     
     # Show processing history
     if st.session_state.processing_status:
-        st.subheader("Processing History")
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.subheader("Processing History")
+        with col2:
+            if st.button("Clear History", help="Clear processing history"):
+                st.session_state.processing_status.clear()
+                st.rerun()
+        
+        # Show last 5 entries
         for status in st.session_state.processing_status[-5:]:  # Show last 5 entries
             st.text(status)
 
