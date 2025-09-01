@@ -1,6 +1,8 @@
 from data_ingestion import extract_pdf, extract_txt, extract_docx 
 import re
 import base64
+import os
+import tempfile
 from pathlib import Path
 # Image processing helper function
 def process_image_to_base64(image_path: str) -> str:

@@ -21,6 +21,8 @@ def initialize_session_state():
         st.session_state.processing_status = []
     if 'agent_initialized' not in st.session_state:
         st.session_state.agent_initialized = False
+    if 'uploaded_files' not in st.session_state:
+        st.session_state.uploaded_files = []
 
 def render_data_ingestion_section():
     """Render the data ingestion interface"""
@@ -103,21 +105,51 @@ def render_chat_section():
             else:
                 st.chat_message("assistant").write(message["content"])
     
+    # File upload widget for chat
+    st.subheader("📎 Attach Files (Optional)")
+    uploaded_chat_files = st.file_uploader(
+        "Upload images or documents to include in your query",
+        type=['png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf', 'docx', 'txt', 'md'],
+        accept_multiple_files=True,
+        help="Supported: Images (PNG, JPG, JPEG, GIF, WEBP) and Documents (PDF, DOCX, TXT, MD)",
+        key="chat_file_uploader"
+    )
+    
+    # Display uploaded files
+    if uploaded_chat_files:
+        st.write("📁 **Attached Files:**")
+        for file in uploaded_chat_files:
+            file_type = "🖼️" if file.type.startswith('image/') else "📄"
+            st.write(f"{file_type} {file.name} ({file.size} bytes)")
+    
     # Chat input
     user_input = st.chat_input("What would you like to know?")
     
     if user_input:
+        # Process uploaded files if any
+        processed_files = None
+        if uploaded_chat_files:
+            with st.spinner("Processing uploaded files..."):
+                from multiModalInputService import process_uploaded_files
+                processed_files = process_uploaded_files(uploaded_chat_files)
+        
+        # Create display message with file info
+        display_message = user_input
+        if uploaded_chat_files:
+            file_info = f"\n\n📎 **Attached Files:** {', '.join([f.name for f in uploaded_chat_files])}"
+            display_message += file_info
+        
         # Add user message to history
-        st.session_state.chat_history.append({"role": "user", "content": user_input})
+        st.session_state.chat_history.append({"role": "user", "content": display_message})
         
         # Display user message immediately
         with chat_container:
-            st.chat_message("user").write(user_input)
+            st.chat_message("user").write(display_message)
         
         # Get AI response
         with st.spinner("Thinking..."):
             try:
-                ai_response = process_user_message(user_input)
+                ai_response = process_user_message(user_input, processed_files)
                 
                 # Add AI response to history
                 st.session_state.chat_history.append({"role": "assistant", "content": ai_response})
@@ -131,6 +163,9 @@ def render_chat_section():
                 st.session_state.chat_history.append({"role": "assistant", "content": error_msg})
                 with chat_container:
                     st.chat_message("assistant").write(error_msg)
+        
+        # Clear the file uploader after processing
+        st.session_state["chat_file_uploader"] = []
         
         # Rerun to update the display
         st.rerun()

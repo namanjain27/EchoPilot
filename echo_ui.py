@@ -139,19 +139,67 @@ Decision flow:
     
     return _rag_agent
 
-def process_user_message(message: str) -> str:
-    """Process single text message through agent and return AI response as string"""
+def process_user_message(message: str, processed_files=None) -> str:
+    """Process text message with optional files through agent and return AI response as string"""
     global _current_chat_messages, _old_chat_summary
     
     if _rag_agent is None:
         initialize_agent()
     
     try:
-        # Parse input for multi-modal content (text only for Phase 1)
-        clean_text, image_paths, doc_paths = parse_multimodal_input(message)
+        # Initialize message content
+        message_content = message
         
-        # For Phase 1, we'll only handle text input
-        human_message = HumanMessage(content=clean_text)
+        # Process uploaded files if provided
+        if processed_files:
+            from multiModalInputService import process_image_to_base64, process_document_to_text
+            import os
+            
+            # Process images to base64
+            image_data = []
+            for image_path in processed_files.get("image_files", []):
+                base64_data = process_image_to_base64(image_path)
+                if base64_data:
+                    image_data.append({
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/jpeg;base64,{base64_data}"}
+                    })
+                # Clean up temp file
+                try:
+                    os.unlink(image_path)
+                except:
+                    pass
+            
+            # Process documents to text
+            doc_text = ""
+            for doc_path in processed_files.get("doc_files", []):
+                text_content = process_document_to_text(doc_path)
+                if text_content:
+                    doc_text += f"\n\nDocument content:\n{text_content}"
+                # Clean up temp file
+                try:
+                    os.unlink(doc_path)
+                except:
+                    pass
+            
+            # Create multi-modal message content
+            if image_data or doc_text:
+                # Combine text with document content
+                combined_text = message + doc_text
+                
+                if image_data:
+                    # Multi-modal content with images
+                    content = [{"type": "text", "text": combined_text}] + image_data
+                    human_message = HumanMessage(content=content)
+                else:
+                    # Text only with document content
+                    human_message = HumanMessage(content=combined_text)
+            else:
+                human_message = HumanMessage(content=message)
+        else:
+            # Text-only message
+            human_message = HumanMessage(content=message)
+        
         _current_chat_messages.append(human_message)
         
         # Create messages list with summary context
