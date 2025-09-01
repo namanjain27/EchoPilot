@@ -10,7 +10,6 @@ def load_chat_summary():
         try:
             with open(CHAT_SUMMARY_FILE, 'r', encoding='utf-8') as f:
                 chat_summary = f.read()
-            print(f"Chat summary loaded from {CHAT_SUMMARY_FILE}")
         except Exception as e:
             print(f"Error loading chat summary: {e}")
             chat_summary = ""

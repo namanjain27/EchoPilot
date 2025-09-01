@@ -80,3 +80,8 @@
 - Implemented "Clear Processing History" button in Data Ingestion tab to allow users to clear processing status display
 - Enhanced data ingestion workflow with proper file uploader state management using dynamic keys
 - Added confirmation/success messages and error handling for chat session saving process
+
+## UI Width and Backend Flow Optimization
+- Reduced file uploader widget width using column layout (2:1 ratio) to prevent full-page width in both chat and data ingestion tabs
+- Fixed duplicate chat summary loading issue by separating frontend (echo_ui.py) and backend (echo.py) chat flows
+- Made "End Chat" button work automatically without requiring backend 'exit' input by implementing local summarization logic in echo_ui.py

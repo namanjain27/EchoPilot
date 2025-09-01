@@ -219,6 +219,38 @@ def process_user_message(message: str, processed_files=None) -> str:
     except Exception as e:
         return f"Sorry, I encountered an error: {str(e)}"
 
+def _summarize_current_chat(current_chat_messages, old_chat_summary):
+    """Summarize current chat session and append to old summary with timestamp"""
+    if not current_chat_messages: 
+        return old_chat_summary
+    
+    system_prompt = """Summarize the chat conversation provided. Include minimal but essential information.
+    1. Always keep format for complete chat: user query: {what was requested}, AI response: {resolution provided with any ticket id if generated}
+    2. Grade the chat session in terms of query resolution: A (fully resolved), B (partially resolved), C (unresolved)
+    Keep the summary concise but informative for future context."""
+    
+    chat_to_summarize = [SystemMessage(content=system_prompt)] + current_chat_messages
+    current_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    try:
+        # Use the same LLM instance but without tools for summarization
+        base_llm = init_chat_model("gemini-2.5-flash", model_provider="google_genai")
+        current_chat_summary = base_llm.invoke(chat_to_summarize)
+        
+        # Handle empty responses from Gemini
+        if not current_chat_summary or not current_chat_summary.content or not current_chat_summary.content.strip():
+            print("Warning: Gemini produced an empty response during summarization. Using fallback summary.")
+            fallback_summary = f"\n\n=== Chat Session ({current_timestamp}) ===\nModel gave empty response. Full chat {current_chat_messages}"
+            return old_chat_summary + fallback_summary
+        
+        session_summary = f"\n\n=== Chat Session ({current_timestamp}) ===\n{current_chat_summary.content}"
+        return old_chat_summary + session_summary
+        
+    except Exception as e:
+        print(f"Error during chat summarization: {str(e)}")
+        fallback_summary = f"\n\n=== Chat Session ({current_timestamp}) ===\nChat session occurred but summary failed due to error: {str(e)}"
+        return old_chat_summary + fallback_summary
+
 def get_vector_store_status() -> dict:
     """Return basic stats about vector store"""
     try:
@@ -242,8 +274,8 @@ def save_current_chat_session():
         return
     
     try:
-        from echo import summarize_current_chat
-        updated_summary = summarize_current_chat(_current_chat_messages, _old_chat_summary)
+        # Use local summarization logic to avoid importing echo.py's main execution
+        updated_summary = _summarize_current_chat(_current_chat_messages, _old_chat_summary)
         save_chat_summary(updated_summary)
         
         # Reset current chat

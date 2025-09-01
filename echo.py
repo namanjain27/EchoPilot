@@ -155,7 +155,6 @@ def summarize_current_chat(current_chat_messages, old_chat_summary):
     Keep the summary concise but informative for future context."""
     
     chat_to_summarize = [SystemMessage(content=system_prompt)] + current_chat_messages
-    print(f"\n chat to summ: {chat_to_summarize}\n\n")
     current_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     try:
         unbounded_llm = llm.bind_tools([])
@@ -191,6 +190,7 @@ rag_agent = graph.compile()
 
 
 def running_agent():
+    """CLI entry point for backend-only usage"""
     print("\n=== RAG AGENT===")
     print("Tip: Include files in your query using:")
     print("  Images: 'image:/path/to/chart.png' or 'img:/path/to/screenshot.jpg'")
@@ -260,11 +260,12 @@ def running_agent():
         messages_with_context.extend(current_chat_messages[:-1])  # Exclude the just-added human message to avoid duplication
         messages_with_context.append(human_message)
         
-        print(f"user_query:{messages_with_context}\n")
         result = rag_agent.invoke({"messages": messages_with_context})
         
         print("\n=== ANSWER ===")
         print(result['messages'][-1].content)
 
 
-running_agent()
+# Only run the CLI interface if this file is executed directly
+if __name__ == "__main__":
+    running_agent()

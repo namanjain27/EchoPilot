@@ -35,13 +35,15 @@ def render_data_ingestion_section():
     if 'data_ingestion_uploader_key' not in st.session_state:
         st.session_state.data_ingestion_uploader_key = 0
     
-    # File upload widget
-    uploaded_file = st.file_uploader(
-        "Choose a file",
-        type=['pdf', 'docx', 'txt', 'md'],
-        help="Supported formats: PDF, DOCX, TXT, MD",
-        key=f"data_ingestion_uploader_{st.session_state.data_ingestion_uploader_key}"
-    )
+    # File upload widget with constrained width
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        uploaded_file = st.file_uploader(
+            "Choose a file",
+            type=['pdf', 'docx', 'txt', 'md'],
+            help="Supported formats: PDF, DOCX, TXT, MD",
+            key=f"data_ingestion_uploader_{st.session_state.data_ingestion_uploader_key}"
+        )
     
     if uploaded_file is not None:
         if st.button("Process File"):
@@ -124,15 +126,16 @@ def render_chat_section():
             else:
                 st.chat_message("assistant").write(message["content"])
     
-    # File upload widget for chat
-    st.subheader("📎 Attach Files (Optional)")
-    uploaded_chat_files = st.file_uploader(
-        "Upload images or documents to include in your query",
-        type=['png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf', 'docx', 'txt', 'md'],
-        accept_multiple_files=True,
-        help="Supported: Images (PNG, JPG, JPEG, GIF, WEBP) and Documents (PDF, DOCX, TXT, MD)",
-        key=f"chat_file_uploader_{st.session_state.file_uploader_key}"
-    )
+    # File upload widget for chat with constrained width
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        uploaded_chat_files = st.file_uploader(
+            "Upload images or documents to include in your query",
+            type=['png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf', 'docx', 'txt', 'md'],
+            accept_multiple_files=True,
+            help="Supported: Images (PNG, JPG, JPEG, GIF, WEBP) and Documents (PDF, DOCX, TXT, MD)",
+            key=f"chat_file_uploader_{st.session_state.file_uploader_key}"
+        )
     
     # Display uploaded files
     if uploaded_chat_files:
