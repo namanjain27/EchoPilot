@@ -24,8 +24,6 @@ def initialize_session_state():
         st.session_state.processing_status = []
     if 'agent_initialized' not in st.session_state:
         st.session_state.agent_initialized = False
-    if 'input_key' not in st.session_state:
-        st.session_state.input_key = 0
 
 def save_persistent_chat():
     """Save chat history to persistent storage"""
@@ -57,6 +55,7 @@ def render_data_ingestion_section():
     
     # Multiple file upload widget
     uploaded_files = st.file_uploader(
+        label="Choose files to upload",
         type=['pdf', 'docx', 'txt', 'md'],
         accept_multiple_files=True,
         help="Supported formats: PDF, DOCX, TXT, MD. You can select multiple files."
@@ -173,51 +172,6 @@ def render_chat_section():
             st.error(f"❌ Unexpected error initializing agent: {str(e)}")
             return
     
-    # Chat management buttons at the top
-    col1, col2, col3 = st.columns([1, 1, 1])
-    
-    with col1:
-        if st.button("📤 Export Chat", help="Download chat history"):
-            if st.session_state.chat_history:
-                # Create export options
-                export_format = st.selectbox("Export format:", ["JSON", "Text"], key="export_format")
-                
-                if export_format == "JSON":
-                    export_data = export_chat_history(st.session_state.chat_history, "json")
-                    st.download_button(
-                        label="Download JSON",
-                        data=export_data,
-                        file_name=f"echopilot_chat_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-                        mime="application/json"
-                    )
-                else:
-                    export_data = export_chat_history(st.session_state.chat_history, "txt")
-                    st.download_button(
-                        label="Download Text",
-                        data=export_data,
-                        file_name=f"echopilot_chat_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
-                        mime="text/plain"
-                    )
-            else:
-                st.info("No chat history to export")
-    
-    with col2:
-        if st.button("🔄 New Chat", help="Start a new chat session"):
-            st.session_state.chat_history.clear()
-            clear_chat_session()
-            save_persistent_chat()
-            st.rerun()
-    
-    with col3:
-        if st.button("🔚 End Session", help="End chat session and save summary", type="primary"):
-            result = end_chat_session()
-            if result["success"]:
-                st.success(result["message"])
-                st.session_state.chat_history.clear()
-                save_persistent_chat()
-                st.rerun()
-            else:
-                st.error(result["message"])
     
     # Display chat history with better formatting
     if st.session_state.chat_history:
@@ -241,125 +195,126 @@ def render_chat_section():
                     with st.chat_message("assistant", avatar="🤖"):
                         st.markdown(message["content"])
     
-    # Create form to handle input and reset
-    with st.form(key=f"chat_form_{st.session_state.input_key}", clear_on_submit=True):
-        # Main input area
-        user_input = st.text_area(
-            "Your question:",
-            placeholder="What would you like to know? You can also attach images or documents below...",
-            height=120,
-            key=f"user_input_{st.session_state.input_key}"
-        )
-        
-        # File upload section with better organization
-        st.write("📎 **Attach Files (Optional):**")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.write("🖼️ **Images**")
-            uploaded_images = st.file_uploader(
-                type=['png', 'jpg', 'jpeg', 'gif', 'webp'],
-                accept_multiple_files=True,
-                key=f"chat_images_{st.session_state.input_key}",
-                help="Upload images to analyze with your question"
-            )
-        
-        with col2:
-            st.write("📄 **Documents**")
-            uploaded_docs = st.file_uploader(
-                type=['pdf', 'txt', 'md', 'docx'],
-                accept_multiple_files=True,
-                key=f"chat_docs_{st.session_state.input_key}",
-                help="Upload documents to include in your question"
-            )
-        
-        # Send button
-        send_button = st.form_submit_button("🚀 Send Message", type="primary", use_container_width=True)
-        
-        if send_button:
-            if user_input.strip():
-                # Process and save uploaded files temporarily
-                image_files = []
-                doc_files = []
-                attachments = []
+    # Chat input without form wrapper
+    user_input = st.chat_input("I can assit you with any query, complaint or service request?")
+    
+    # File upload below the chat input
+    uploaded_files = st.file_uploader(
+        "📎 Attach files",
+        type=['png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf', 'txt', 'md', 'docx'],
+        accept_multiple_files=True,
+        help="Upload images or documents to analyze with your question"
+    )
+    
+    # Single row for utility buttons
+    export_col, new_col, end_col = st.columns([1, 1, 1])
+    
+    with export_col:
+        if st.button("📤 Export", help="Download chat history"):
+            if st.session_state.chat_history:
+                # Create export options
+                export_format = st.selectbox("Export format:", ["JSON", "Text"], key="export_format")
                 
-                # Handle image uploads
-                if uploaded_images:
-                    for uploaded_image in uploaded_images:
-                        with tempfile.NamedTemporaryFile(delete=False, suffix=Path(uploaded_image.name).suffix) as tmp_file:
-                            tmp_file.write(uploaded_image.getvalue())
-                            image_files.append(tmp_file.name)
-                            attachments.append({
-                                "type": "image",
-                                "name": uploaded_image.name,
-                                "data": uploaded_image.getvalue()
-                            })
-                
-                # Handle document uploads
-                if uploaded_docs:
-                    for uploaded_doc in uploaded_docs:
-                        with tempfile.NamedTemporaryFile(delete=False, suffix=Path(uploaded_doc.name).suffix) as tmp_file:
-                            tmp_file.write(uploaded_doc.getvalue())
-                            doc_files.append(tmp_file.name)
-                            attachments.append({
-                                "type": "document",
-                                "name": uploaded_doc.name,
-                                "data": None
-                            })
-                
-                # Create user message with attachments info
-                user_message = {
-                    "role": "user",
-                    "content": user_input,
-                    "timestamp": datetime.now().isoformat()
-                }
-                
-                if attachments:
-                    user_message["attachments"] = attachments
-                
-                st.session_state.chat_history.append(user_message)
-                
-                # Get AI response
-                with st.spinner("🤔 Analyzing and thinking..."):
-                    try:
-                        ai_response = process_user_message(user_input, image_files, doc_files)
-                        
-                        # Add AI response to history
-                        ai_message = {
-                            "role": "assistant",
-                            "content": ai_response,
-                            "timestamp": datetime.now().isoformat()
-                        }
-                        st.session_state.chat_history.append(ai_message)
-                        
-                    except Exception as e:
-                        error_msg = f"Sorry, I encountered an error: {str(e)}"
-                        ai_message = {
-                            "role": "assistant",
-                            "content": error_msg,
-                            "timestamp": datetime.now().isoformat()
-                        }
-                        st.session_state.chat_history.append(ai_message)
-                    
-                    finally:
-                        # Clean up temporary files
-                        for file_path in image_files + doc_files:
-                            try:
-                                os.unlink(file_path)
-                            except:
-                                pass
-                
-                # Save to persistent storage
+                if export_format == "JSON":
+                    export_data = export_chat_history(st.session_state.chat_history, "json")
+                    st.download_button(
+                        label="Download JSON",
+                        data=export_data,
+                        file_name=f"echopilot_chat_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                        mime="application/json"
+                    )
+                else:
+                    export_data = export_chat_history(st.session_state.chat_history, "txt")
+                    st.download_button(
+                        label="Download Text",
+                        data=export_data,
+                        file_name=f"echopilot_chat_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+                        mime="text/plain"
+                    )
+            else:
+                st.info("No chat history to export")
+    
+    with new_col:
+        if st.button("🔄 New Chat", help="Start a new chat session"):
+            st.session_state.chat_history.clear()
+            clear_chat_session()
+            save_persistent_chat()
+            st.rerun()
+    
+    with end_col:
+        if st.button("🔚 End Session", help="End chat session and save summary", type="primary"):
+            result = end_chat_session()
+            if result["success"]:
+                st.success(result["message"])
+                st.session_state.chat_history.clear()
                 save_persistent_chat()
-                
-                # Increment input key to reset form
-                st.session_state.input_key += 1
-                
-                # Rerun to update the display
                 st.rerun()
             else:
-                st.warning("⚠️ Please enter a question before sending.")
+                st.error(result["message"])
+    
+    # Process user input immediately when submitted
+    if user_input:
+        # Process uploaded files using unified processing
+        from multiModalInputService import process_uploaded_files
+        
+        image_files = []
+        doc_files = []
+        attachments = []
+        
+        # Process all uploaded files
+        if uploaded_files:
+            processed_files = process_uploaded_files(uploaded_files)
+            image_files = processed_files["image_files"]
+            doc_files = processed_files["doc_files"]
+            attachments = processed_files["attachments"]
+        
+        # Create user message with attachments info
+        user_message = {
+            "role": "user",
+            "content": user_input,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        if attachments:
+            user_message["attachments"] = attachments
+        
+        # Add user message immediately and show it
+        st.session_state.chat_history.append(user_message)
+        save_persistent_chat()
+        st.rerun()  # Rerun to show user message immediately
+        
+        # Get AI response (this will happen on the next run)
+        with st.spinner("🤔 Analyzing and thinking..."):
+            try:
+                ai_response = process_user_message(user_input, image_files, doc_files)
+                
+                # Add AI response to history
+                ai_message = {
+                    "role": "assistant",
+                    "content": ai_response,
+                    "timestamp": datetime.now().isoformat()
+                }
+                st.session_state.chat_history.append(ai_message)
+                
+            except Exception as e:
+                error_msg = f"Sorry, I encountered an error: {str(e)}"
+                ai_message = {
+                    "role": "assistant",
+                    "content": error_msg,
+                    "timestamp": datetime.now().isoformat()
+                }
+                st.session_state.chat_history.append(ai_message)
+            
+            finally:
+                # Clean up temporary files
+                for file_path in image_files + doc_files:
+                    try:
+                        os.unlink(file_path)
+                    except:
+                        pass
+        
+        # Save to persistent storage
+        save_persistent_chat()
     
     # Help section
     with st.expander("💡 Tips & Help"):
@@ -367,9 +322,8 @@ def render_chat_section():
         **How to use EchoPilot:**
         
         1. **Text Questions**: Simply type your question in the text area above
-        2. **Images**: Upload images to get visual analysis and context-aware responses
-        3. **Documents**: Upload PDF, Word, or text files to analyze their content
-        4. **Multi-modal**: Combine text, images, and documents in one question
+        2. **Files**: Upload images or documents to get visual analysis and context-aware responses
+        3. **Multi-modal**: Combine text and files in one question
         
         **Features:**
         - 🔍 **RAG Search**: Searches your knowledge base for relevant information
