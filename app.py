@@ -1,11 +1,8 @@
 import streamlit as st
 import os
-import json
 from pathlib import Path
 import tempfile
-from datetime import datetime
-from echo_ui import (initialize_agent, process_user_message, get_vector_store_status, 
-                     clear_chat_session, end_chat_session, export_chat_history)
+from echo_ui import initialize_agent, process_user_message, get_vector_store_status, clear_chat_session
 from data_ingestion import ingest_file_with_feedback
 
 # Page configuration
@@ -19,72 +16,27 @@ st.set_page_config(
 def initialize_session_state():
     """Initialize session state variables"""
     if 'chat_history' not in st.session_state:
-        st.session_state.chat_history = load_persistent_chat()
+        st.session_state.chat_history = []
     if 'processing_status' not in st.session_state:
         st.session_state.processing_status = []
     if 'agent_initialized' not in st.session_state:
         st.session_state.agent_initialized = False
 
-def save_persistent_chat():
-    """Save chat history to persistent storage"""
-    try:
-        chat_file = Path("persistent_chat.json")
-        with open(chat_file, 'w') as f:
-            json.dump({
-                "timestamp": datetime.now().isoformat(),
-                "chat_history": st.session_state.chat_history
-            }, f, indent=2)
-    except Exception as e:
-        st.error(f"Failed to save chat: {str(e)}")
-
-def load_persistent_chat():
-    """Load chat history from persistent storage"""
-    try:
-        chat_file = Path("persistent_chat.json")
-        if chat_file.exists():
-            with open(chat_file, 'r') as f:
-                data = json.load(f)
-                return data.get("chat_history", [])
-    except Exception as e:
-        print(f"Failed to load persistent chat: {str(e)}")
-    return []
-
 def render_data_ingestion_section():
     """Render the data ingestion interface"""
+    st.header("📁 Data Ingestion")
     st.write("Upload files to add them to the knowledge base")
     
-    # Multiple file upload widget
-    uploaded_files = st.file_uploader(
-        label="Choose files to upload",
+    # File upload widget
+    uploaded_file = st.file_uploader(
+        "Choose a file",
         type=['pdf', 'docx', 'txt', 'md'],
-        accept_multiple_files=True,
-        help="Supported formats: PDF, DOCX, TXT, MD. You can select multiple files."
+        help="Supported formats: PDF, DOCX, TXT, MD"
     )
     
-    if uploaded_files:
-        st.info(f"📄 {len(uploaded_files)} file(s) selected")
-        
-        # Show selected files
-        with st.expander("Selected Files", expanded=False):
-            for file in uploaded_files:
-                st.write(f"• {file.name} ({file.size} bytes)")
-        
-        if st.button("Process All Files", type="primary"):
-            # Create progress bar
-            progress_bar = st.progress(0)
-            status_text = st.empty()
-            results_container = st.container()
-            
-            total_files = len(uploaded_files)
-            successful_files = 0
-            failed_files = 0
-            
-            for i, uploaded_file in enumerate(uploaded_files):
-                # Update progress
-                progress = (i / total_files)
-                progress_bar.progress(progress)
-                status_text.text(f"Processing {uploaded_file.name}...")
-                
+    if uploaded_file is not None:
+        if st.button("Process File"):
+            with st.spinner("Processing file..."):
                 # Save uploaded file temporarily
                 with tempfile.NamedTemporaryFile(delete=False, suffix=Path(uploaded_file.name).suffix) as tmp_file:
                     tmp_file.write(uploaded_file.getvalue())
@@ -94,70 +46,40 @@ def render_data_ingestion_section():
                     # Process file with feedback
                     result = ingest_file_with_feedback(tmp_file_path)
                     
-                    with results_container:
-                        if result["success"]:
-                            st.success(f"✅ {result['file_name']}: {result['message']}")
-                            st.session_state.processing_status.append(f"Success: {result['file_name']}")
-                            successful_files += 1
-                        else:
-                            st.error(f"❌ {result['file_name']}: {result['message']}")
-                            st.session_state.processing_status.append(f"Failed: {result['file_name']} - {result['message']}")
-                            failed_files += 1
-                            
+                    if result["success"]:
+                        st.success(f"✅ {result['message']}")
+                        st.session_state.processing_status.append(f"Success: {result['file_name']}")
+                    else:
+                        st.error(f"❌ {result['message']}")
+                        st.session_state.processing_status.append(f"Failed: {result['file_name']} - {result['message']}")
+                        
                 finally:
                     # Clean up temporary file
                     try:
                         os.unlink(tmp_file_path)
                     except:
                         pass
-            
-            # Final progress update
-            progress_bar.progress(1.0)
-            status_text.text(f"✅ Processing complete! {successful_files} successful, {failed_files} failed")
     
     # Show vector store status
-    st.subheader("📊 Knowledge Base Status")
-    
-    # Create columns for status display
-    col1, col2 = st.columns(2)
-    
+    st.subheader("Knowledge Base Status")
     vector_status = get_vector_store_status()
     
-    with col1:
-        if vector_status["status"] == "ready":
-            st.metric("Documents", vector_status['approx_docs'], help="Approximate number of document chunks")
-            st.success("✅ Vector store ready")
-        elif vector_status["status"] == "empty":
-            st.metric("Documents", "0")
-            st.warning("📭 Vector store empty")
-        else:
-            st.metric("Documents", "Error")
-            st.error(f"❌ {vector_status.get('error', 'Unknown error')}")
-    
-    with col2:
-        # Refresh button for status
-        if st.button("🔄 Refresh Status"):
-            st.rerun()
+    if vector_status["status"] == "ready":
+        st.info(f"📊 Vector store is ready with approximately {vector_status['approx_docs']} documents")
+    elif vector_status["status"] == "empty":
+        st.warning("📭 Vector store is empty. Upload some files to get started!")
+    else:
+        st.error(f"❌ Vector store error: {vector_status.get('error', 'Unknown error')}")
     
     # Show processing history
     if st.session_state.processing_status:
-        st.subheader("📋 Processing History")
-        
-        # Show recent entries with better formatting
-        recent_entries = st.session_state.processing_status[-10:]  # Show last 10 entries
-        for i, status in enumerate(reversed(recent_entries)):
-            if "Success:" in status:
-                st.success(f"{len(recent_entries) - i}. {status}")
-            else:
-                st.error(f"{len(recent_entries) - i}. {status}")
-        
-        # Clear history button
-        if st.button("Clear History"):
-            st.session_state.processing_status.clear()
-            st.rerun()
+        st.subheader("Processing History")
+        for status in st.session_state.processing_status[-5:]:  # Show last 5 entries
+            st.text(status)
 
 def render_chat_section():
-    """Render the enhanced chat interface"""
+    """Render the chat interface"""
+    st.header("💬 Chat Interface")
     
     # Initialize agent if not already done
     if not st.session_state.agent_initialized:
@@ -172,170 +94,52 @@ def render_chat_section():
             st.error(f"❌ Unexpected error initializing agent: {str(e)}")
             return
     
-    
-    # Display chat history with better formatting
-    if st.session_state.chat_history:
-        st.subheader(f"💬 Conversation ({len(st.session_state.chat_history)} messages)")
-        
-        # Create a scrollable chat container
-        chat_container = st.container()
-        with chat_container:
-            for i, message in enumerate(st.session_state.chat_history):
-                if message["role"] == "user":
-                    with st.chat_message("user", avatar="👤"):
-                        st.markdown(message["content"])
-                        # Display attached files if any
-                        if "attachments" in message:
-                            for attachment in message["attachments"]:
-                                if attachment["type"] == "image":
-                                    st.image(attachment["data"], caption=f"📷 {attachment['name']}", width=300)
-                                elif attachment["type"] == "document":
-                                    st.info(f"📄 Document: {attachment['name']}")
-                else:
-                    with st.chat_message("assistant", avatar="🤖"):
-                        st.markdown(message["content"])
-    
-    # Chat input without form wrapper
-    user_input = st.chat_input("I can assit you with any query, complaint or service request?")
-    
-    # File upload below the chat input
-    uploaded_files = st.file_uploader(
-        "📎 Attach files",
-        type=['png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf', 'txt', 'md', 'docx'],
-        accept_multiple_files=True,
-        help="Upload images or documents to analyze with your question"
-    )
-    
-    # Single row for utility buttons
-    export_col, new_col, end_col = st.columns([1, 1, 1])
-    
-    with export_col:
-        if st.button("📤 Export", help="Download chat history"):
-            if st.session_state.chat_history:
-                # Create export options
-                export_format = st.selectbox("Export format:", ["JSON", "Text"], key="export_format")
-                
-                if export_format == "JSON":
-                    export_data = export_chat_history(st.session_state.chat_history, "json")
-                    st.download_button(
-                        label="Download JSON",
-                        data=export_data,
-                        file_name=f"echopilot_chat_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-                        mime="application/json"
-                    )
-                else:
-                    export_data = export_chat_history(st.session_state.chat_history, "txt")
-                    st.download_button(
-                        label="Download Text",
-                        data=export_data,
-                        file_name=f"echopilot_chat_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
-                        mime="text/plain"
-                    )
+    # Display chat history
+    chat_container = st.container()
+    with chat_container:
+        for i, message in enumerate(st.session_state.chat_history):
+            if message["role"] == "user":
+                st.chat_message("user").write(message["content"])
             else:
-                st.info("No chat history to export")
+                st.chat_message("assistant").write(message["content"])
     
-    with new_col:
-        if st.button("🔄 New Chat", help="Start a new chat session"):
-            st.session_state.chat_history.clear()
-            clear_chat_session()
-            save_persistent_chat()
-            st.rerun()
+    # Chat input
+    user_input = st.chat_input("What would you like to know?")
     
-    with end_col:
-        if st.button("🔚 End Session", help="End chat session and save summary", type="primary"):
-            result = end_chat_session()
-            if result["success"]:
-                st.success(result["message"])
-                st.session_state.chat_history.clear()
-                save_persistent_chat()
-                st.rerun()
-            else:
-                st.error(result["message"])
-    
-    # Process user input immediately when submitted
     if user_input:
-        # Process uploaded files using unified processing
-        from multiModalInputService import process_uploaded_files
+        # Add user message to history
+        st.session_state.chat_history.append({"role": "user", "content": user_input})
         
-        image_files = []
-        doc_files = []
-        attachments = []
+        # Display user message immediately
+        with chat_container:
+            st.chat_message("user").write(user_input)
         
-        # Process all uploaded files
-        if uploaded_files:
-            processed_files = process_uploaded_files(uploaded_files)
-            image_files = processed_files["image_files"]
-            doc_files = processed_files["doc_files"]
-            attachments = processed_files["attachments"]
-        
-        # Create user message with attachments info
-        user_message = {
-            "role": "user",
-            "content": user_input,
-            "timestamp": datetime.now().isoformat()
-        }
-        
-        if attachments:
-            user_message["attachments"] = attachments
-        
-        # Add user message immediately and show it
-        st.session_state.chat_history.append(user_message)
-        save_persistent_chat()
-        st.rerun()  # Rerun to show user message immediately
-        
-        # Get AI response (this will happen on the next run)
-        with st.spinner("🤔 Analyzing and thinking..."):
+        # Get AI response
+        with st.spinner("Thinking..."):
             try:
-                ai_response = process_user_message(user_input, image_files, doc_files)
+                ai_response = process_user_message(user_input)
                 
                 # Add AI response to history
-                ai_message = {
-                    "role": "assistant",
-                    "content": ai_response,
-                    "timestamp": datetime.now().isoformat()
-                }
-                st.session_state.chat_history.append(ai_message)
+                st.session_state.chat_history.append({"role": "assistant", "content": ai_response})
                 
+                # Display AI response
+                with chat_container:
+                    st.chat_message("assistant").write(ai_response)
+                    
             except Exception as e:
                 error_msg = f"Sorry, I encountered an error: {str(e)}"
-                ai_message = {
-                    "role": "assistant",
-                    "content": error_msg,
-                    "timestamp": datetime.now().isoformat()
-                }
-                st.session_state.chat_history.append(ai_message)
-            
-            finally:
-                # Clean up temporary files
-                for file_path in image_files + doc_files:
-                    try:
-                        os.unlink(file_path)
-                    except:
-                        pass
+                st.session_state.chat_history.append({"role": "assistant", "content": error_msg})
+                with chat_container:
+                    st.chat_message("assistant").write(error_msg)
         
-        # Save to persistent storage
-        save_persistent_chat()
+        # Rerun to update the display
+        st.rerun()
     
-    # Help section
-    with st.expander("💡 Tips & Help"):
-        st.markdown("""
-        **How to use EchoPilot:**
-        
-        1. **Text Questions**: Simply type your question in the text area above
-        2. **Files**: Upload images or documents to get visual analysis and context-aware responses
-        3. **Multi-modal**: Combine text and files in one question
-        
-        **Features:**
-        - 🔍 **RAG Search**: Searches your knowledge base for relevant information
-        - 🎫 **JIRA Integration**: Can create tickets for issues and requests
-        - 💾 **Persistent History**: Your conversations are saved automatically
-        - 📤 **Export**: Download your chat history in JSON or text format
-        
-        **Session Management:**
-        - **New Chat**: Clears current conversation (history is saved)
-        - **End Session**: Summarizes and saves current conversation, then clears it
-        """)
-    
+    # Clear chat button
+    if st.button("Clear Chat"):
+        st.session_state.chat_history.clear()
+        clear_chat_session()
+        st.rerun()
 
 def main():
     """Main application function"""

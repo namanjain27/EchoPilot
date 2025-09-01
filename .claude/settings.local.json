@@ -7,9 +7,7 @@
       "WebFetch(domain:community.latenode.com)",
       "WebFetch(domain:community.latenode.com)",
       "WebSearch",
-      "WebFetch(domain:docs.langchain.com)",
-      "Read(/mnt/c/Users/jainn/Downloads/**)",
-      "Read(/mnt/c/Users/jainn/Downloads/**)"
+      "WebFetch(domain:docs.langchain.com)"
     ],
     "deny": [],
     "ask": []
