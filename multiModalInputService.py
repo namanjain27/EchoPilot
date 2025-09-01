@@ -97,3 +97,58 @@ def parse_multimodal_input(user_input: str) -> tuple:
     clean_text = re.sub(doc_pattern, '', clean_text, flags=re.IGNORECASE).strip()
     
     return clean_text, image_matches, doc_matches
+
+def process_uploaded_files(uploaded_files):
+    """
+    Process uploaded files from Streamlit and categorize them into images and documents
+    Returns dictionary with temporary file paths and attachment info
+    """
+    image_files = []
+    doc_files = []
+    attachments = []
+    
+    # Define supported file types
+    image_extensions = {'.png', '.jpg', '.jpeg', '.gif', '.webp'}
+    doc_extensions = {'.pdf', '.txt', '.md', '.docx'}
+    
+    for uploaded_file in uploaded_files:
+        file_extension = Path(uploaded_file.name).suffix.lower()
+        
+        # Create temporary file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=file_extension) as tmp_file:
+            tmp_file.write(uploaded_file.getvalue())
+            tmp_file_path = tmp_file.name
+            
+        if file_extension in image_extensions:
+            # Image file
+            image_files.append(tmp_file_path)
+            attachments.append({
+                "type": "image",
+                "name": uploaded_file.name,
+                "data": uploaded_file.getvalue()
+            })
+            print(f"Processed image file: {uploaded_file.name}")
+            
+        elif file_extension in doc_extensions:
+            # Document file
+            doc_files.append(tmp_file_path)
+            attachments.append({
+                "type": "document", 
+                "name": uploaded_file.name,
+                "data": None
+            })
+            print(f"Processed document file: {uploaded_file.name}")
+            
+        else:
+            # Unsupported file type - clean up temp file
+            try:
+                os.unlink(tmp_file_path)
+            except:
+                pass
+            print(f"Skipping unsupported file type: {uploaded_file.name}")
+    
+    return {
+        "image_files": image_files,
+        "doc_files": doc_files,
+        "attachments": attachments
+    }
