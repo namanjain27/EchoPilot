@@ -1,3 +1,6 @@
+# Apply SQLite3 fix before any ChromaDB-related imports
+import sqlite_fix
+
 import streamlit as st
 import os
 from pathlib import Path

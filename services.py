@@ -1,21 +1,6 @@
 
-# Fix for Streamlit Cloud SQLite3 compatibility issue with ChromaDB
-import sys
-
-# Override SQLite3 with pysqlite3 if needed (for Streamlit Cloud deployment)
-try:
-    import sqlite3
-    # Check SQLite version and use pysqlite3 if version is too old
-    if sqlite3.sqlite_version_info < (3, 35, 0):
-        import pysqlite3
-        sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
-except ImportError:
-    # Fallback: try to use pysqlite3 if sqlite3 import fails or is too old
-    try:
-        import pysqlite3
-        sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
-    except ImportError:
-        pass
+# Import SQLite3 fix BEFORE any ChromaDB imports
+import sqlite_fix
 
 from langchain_chroma import Chroma
 from sentence_transformers import SentenceTransformer

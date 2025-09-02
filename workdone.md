@@ -86,7 +86,7 @@
 - Fixed duplicate chat summary loading issue by separating frontend (echo_ui.py) and backend (echo.py) chat flows
 - Made "End Chat" button work automatically without requiring backend 'exit' input by implementing local summarization logic in echo_ui.py
 
-## Streamlit Cloud Deployment SQLite3 Fix
-- Added SQLite3 version check and pysqlite3-binary fallback in services.py to handle ChromaDB compatibility on Streamlit Cloud
-- Created clean requirements.txt with pysqlite3-binary==0.5.4 dependency for older SQLite3 environments
-- Fixed ChromaDB RuntimeError for unsupported SQLite3 versions by module override mechanism
+## Streamlit Cloud Deployment SQLite3 Fix - Enhanced
+- Created dedicated sqlite_fix.py module to handle SQLite3 compatibility before any ChromaDB imports
+- Fixed corrupted requirements.txt encoding issues and moved pysqlite3-binary==0.5.2 to top priority
+- Applied SQLite3 override in both app.py and services.py entry points to ensure early module substitution before ChromaDB initialization
