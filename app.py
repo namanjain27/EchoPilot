@@ -230,10 +230,10 @@ def main():
     # Sidebar with additional info
     with st.sidebar:
         st.header("ℹ️ About EchoPilot")
-        st.write("An intelligent AI assistant that helps with customer success queries using your knowledge base.")
+        st.write("An AI Customer Success Copilot that assists with query resolution and complaint/service ticket creation.")
         
         st.subheader("✨ Features")
-        st.write("• RAG-based question answering")
+        st.write("• RAG-based answering")
         st.write("• JIRA ticket creation")
         st.write("• Multi-format document processing")
         st.write("• Persistent chat history")

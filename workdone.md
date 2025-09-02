@@ -100,3 +100,10 @@
 - Fixed parameter mismatch between create_jira_ticket() in echo.py and create_ticket() in jira_tool.py
 - Changed JiraTool method signature from (desc, ticket_type) to (description, intent) to match the tool definition
 - Added better error handling and debugging in take_action() function to show actual tool arguments and catch exceptions
+
+## Architecture Refactoring - Centralized Agent Logic
+- Refactored echo.py to extract reusable get_tools() and create_agent() functions for consistent tool definitions across CLI and UI
+- Completely rewrote echo_ui.py to eliminate duplicate tool definitions and import centralized agent creation from echo.py
+- Removed duplicate create_jira_ticket and retriever_tool definitions from echo_ui.py that caused parameter mismatches
+- Now both CLI and UI use exactly the same JIRA tool with proper 5-parameter structure (summary, description, intent, urgency, sentiment)
+- Maintained backward compatibility for CLI usage while ensuring UI uses centralized logic
