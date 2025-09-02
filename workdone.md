@@ -85,3 +85,8 @@
 - Reduced file uploader widget width using column layout (2:1 ratio) to prevent full-page width in both chat and data ingestion tabs
 - Fixed duplicate chat summary loading issue by separating frontend (echo_ui.py) and backend (echo.py) chat flows
 - Made "End Chat" button work automatically without requiring backend 'exit' input by implementing local summarization logic in echo_ui.py
+
+## Streamlit Cloud Deployment SQLite3 Fix
+- Added SQLite3 version check and pysqlite3-binary fallback in services.py to handle ChromaDB compatibility on Streamlit Cloud
+- Created clean requirements.txt with pysqlite3-binary==0.5.4 dependency for older SQLite3 environments
+- Fixed ChromaDB RuntimeError for unsupported SQLite3 versions by module override mechanism
