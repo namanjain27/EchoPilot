@@ -90,3 +90,13 @@
 - Created dedicated sqlite_fix.py module to handle SQLite3 compatibility before any ChromaDB imports
 - Fixed corrupted requirements.txt encoding issues and moved pysqlite3-binary==0.5.2 to top priority
 - Applied SQLite3 override in both app.py and services.py entry points to ensure early module substitution before ChromaDB initialization
+
+## Data Ingestion UI File Name Display Fix
+- Fixed processing history in data ingestion tab showing temp file names instead of actual uploaded file names
+- Modified ingest_file_with_feedback() to accept optional original_file_name parameter and use it for display purposes
+- Updated app.py file processing to pass uploaded_file.name as the original file name to maintain proper file identification in UI
+
+## JIRA Tool Parameter Alignment Fix
+- Fixed parameter mismatch between create_jira_ticket() in echo.py and create_ticket() in jira_tool.py
+- Changed JiraTool method signature from (desc, ticket_type) to (description, intent) to match the tool definition
+- Added better error handling and debugging in take_action() function to show actual tool arguments and catch exceptions

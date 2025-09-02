@@ -35,11 +35,11 @@ def extract_txt(file_path) -> list:
     loader = TextLoader(file_path, encoding="utf-8")
     return loader.load()  # returns List[Document]
 
-def ingest_file_with_feedback(file_path: str) -> dict:
+def ingest_file_with_feedback(file_path: str, original_file_name: str = None) -> dict:
     """Modified version of file ingestion that returns detailed status for UI"""
     try:
         file_path = Path(file_path)
-        file_name = file_path.name
+        file_name = original_file_name if original_file_name else file_path.name
         
         # Check if file exists
         if not os.path.exists(file_path):

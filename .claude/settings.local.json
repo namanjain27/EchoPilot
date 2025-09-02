@@ -7,7 +7,8 @@
       "WebFetch(domain:community.latenode.com)",
       "WebFetch(domain:community.latenode.com)",
       "WebSearch",
-      "WebFetch(domain:docs.langchain.com)"
+      "WebFetch(domain:docs.langchain.com)",
+      "WebFetch(domain:www.rentomojo.com)"
     ],
     "deny": [],
     "ask": []

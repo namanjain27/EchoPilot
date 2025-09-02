@@ -45,22 +45,19 @@ def retriever_tool(query: str) -> str:
 
 
 @tool
-def create_jira_ticket(summary: str, description: str, labels: str) -> str:
-    """
-    Creates a JIRA ticket for service requests, complaints, and feature requests.
-    
-    Args: 
-        summary: this would be the subject of the ticket. Keep it short and self-defining
-        desc: description should contain all the necessary details to help the associates resolve the issue
-        labels: Comma-separated labels with no spaces. Always have at least 2 values being - mode (associate or customer) and type (service request, complaints or feature request). (e.g., "customer,complaint" or "associate, feature_request")
-    
-    Returns:
-        The created ticket key or error message
+def create_jira_ticket(summary: str, description: str, intent: str, urgency: str, sentiment: str) -> str:
+    """ Creates a jira ticket for service request, complaints and feature request.
+        Args: 
+            summary: this would be the subject of the ticket. Keep it short and self-defining
+            description: description should contain all the necessary details to help the associates resolve the issue
+            intent (one of): service_request, complaints or feature_request
+            urgency (one of): high (if told critical or urgent), medium (default for complaint and service_request), low (else)
+            sentiment (one of): positive (on receiving good remark), neutral (default), negative (if user expresses bad experience)
+        returns: ticket id as string if success. None if failed to create ticket.
     """
     try:
         jira_tool = JiraTool()
-        labels_list = [label.strip() for label in labels.split(",") if label.strip()]
-        ticket_key = jira_tool.create_ticket(summary, description, labels_list)
+        ticket_key = jira_tool.create_ticket(summary, description, intent, urgency, sentiment)
         return f"Successfully created JIRA ticket: {ticket_key}"
     except Exception as e:
         return f"Failed to create JIRA ticket: {str(e)}"
@@ -96,12 +93,11 @@ When images/added documents are provided:
 - Use image analysis to better understand customer issues or requests
 
 Decision flow:
-1. First check intent (query, complaint, service/feature request), as well as urgency and sentiment (these become ticket labels if a ticket is created).
+1. First check intent (query, complaint, service/feature request), as well as urgency and sentiment (will be used in creating jira ticket if needed).
 2. If query → analyze any provided images, try a simple RAG answer with retriever. If not found, offer to create a ticket to add missing files into knowledge base.
 3. If complaint →
 3.1. If valid per KB or supported by image evidence → offer to create a complaint ticket.
 3.2. If invalid per KB → explain reasons with citations.
-3.3. If KB lacks enough info → still offer to create a ticket, and ask for any additional relevant details. 
 4. If service/feature request → analyze images for context, ask any clarifying questions if needed, then offer to create a ticket.
 """
 
@@ -123,15 +119,19 @@ def take_action(state: AgentState) -> AgentState:
     tool_calls = state['messages'][-1].tool_calls
     results = []
     for t in tool_calls:
-        print(f"Calling Tool: {t['name']} with query: {t['args'].get('query', 'No query provided')}")
+        print(f"Calling Tool: {t['name']} with args: {t['args']}")
         
         if not t['name'] in tools_dict: # Checks if a valid tool is present
             print(f"\\nTool: {t['name']} does not exist.")
             result = "Incorrect Tool Name, Please Retry and Select tool from List of Available tools."
         
         else:
-            result = tools_dict[t['name']].invoke(t['args'])
-            print(f"Result length: {len(str(result))}")
+            try:
+                result = tools_dict[t['name']].invoke(t['args'])
+                print(f"Tool execution successful. Result length: {len(str(result))}")
+            except Exception as e:
+                print(f"Tool execution failed with error: {str(e)}")
+                result = f"Tool execution failed: {str(e)}"
             
 
         # Appends the Tool Message

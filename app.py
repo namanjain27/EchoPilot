@@ -58,7 +58,7 @@ def render_data_ingestion_section():
                 
                 try:
                     # Process file with feedback
-                    result = ingest_file_with_feedback(tmp_file_path)
+                    result = ingest_file_with_feedback(tmp_file_path, uploaded_file.name)
                     
                     if result["success"]:
                         st.success(f"✅ {result['message']}")

@@ -30,12 +30,14 @@ class JiraTool:
         server_info = self._jira_client.server_info()
         print("Connected to Jira: ", server_info['baseUrl'])
 
-    def create_ticket(self, summary: str, desc: str, labels: List[str]) -> str:
+    def create_ticket(self, summary: str, description: str, intent: str, urgency: str, sentiment: str) -> str:
         """Creates a jira ticket for service request, complaints and feature request.
             Args: 
                 summary: this would be the subject of the ticket. Keep it short and self-defining
-                desc: description should contain all the necessary details to help the associates resolve the issue
-                labels: always have 4 values being - mode (associate or customer), type (service_request, complaints or feature_request), urgency (high, medium, low), sentiment (positive, neutral, negative)
+                description: description should contain all the necessary details to help the associates resolve the issue
+                intent (one of): service_request, complaints or feature_request
+                urgency (one of): high (if told critical or urgent), medium (default for complaint and service_request), low (else)
+                sentiment (one of): positive (on receiving good remark), neutral (default), negative (if user expresses bad experience)
             returns: ticket id as string if success. None if failed to create ticket.
         """
         if not self._jira_client or not self._project_key:
@@ -44,9 +46,9 @@ class JiraTool:
         issue_data = {
             "project": {"key": self._project_key},
             "summary": summary,
-            "description": desc,
+            "description": description,
             "issuetype": {"name": "Story"},
-            "labels": labels
+            "labels": [intent, urgency, sentiment]
         }
         try:
             new_issue = self._jira_client.create_issue(fields=issue_data)
