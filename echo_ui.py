@@ -1,16 +1,12 @@
 from dotenv import load_dotenv
 import os
-from pathlib import Path
 from datetime import datetime
-from typing import TypedDict, Annotated, Sequence
-from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage, ToolMessage, AIMessage
-from operator import add as add_messages
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from langchain.chat_models import init_chat_model
 from chat_mgmt import load_chat_summary, save_chat_summary
-from multiModalInputService import process_image_to_base64, process_document_to_text, parse_multimodal_input
-# Import centralized agent creation from echo.py
-from echo import create_agent, get_tools
+from echo import create_agent
 import services
+import guardrails
 
 # Load environment variables
 load_dotenv()
@@ -48,8 +44,10 @@ def process_user_message(message: str, processed_files=None) -> str:
         initialize_agent()
     
     try:
-        # Initialize message content
-        message_content = message
+        # check relevance of human query first - deny if irrelevant without processing
+        relevant, msg = guardrails.is_relevant(message)
+        if not relevant:
+            return msg
         
         # Process uploaded files if provided
         if processed_files:
