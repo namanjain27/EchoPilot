@@ -70,11 +70,16 @@ async def chat(
             processed_files = process_uploaded_files(uploaded_files_list)
             files_processed_count = len(processed_files.get("image_files", [])) + len(processed_files.get("doc_files", []))
         
+        # Store user message in session
+        user_message = HumanMessage(content=message)
+        add_session_message(actual_session_id, user_message)
+        
         # Process message through agent
         ai_response = process_user_message(message, processed_files)
         
-        # Store messages in session (this is handled inside process_user_message for echo_ui compatibility)
-        # But we could also track it in our session store if needed for API-specific functionality
+        # Store AI response in session
+        ai_message = AIMessage(content=ai_response)
+        add_session_message(actual_session_id, ai_message)
         
         return ChatResponse(
             response=ai_response,

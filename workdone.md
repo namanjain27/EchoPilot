@@ -122,3 +122,8 @@
 - Added SessionHistoryResponse and SessionClearResponse models to api/models/responses.py
 - Implemented GET /api/v1/session/history endpoint to retrieve chat messages for a session with message count
 - Implemented DELETE /api/v1/session/clear endpoint to clear session without saving using clear_chat_session()
+
+## FastAPI Session Management Fix
+- Fixed session management inconsistency by making all endpoints use api/dependencies.py for unified session storage
+- Updated api/routes/session.py to use _sessions from dependencies instead of local storage
+- Modified api/routes/chat.py to store user and AI messages in session using add_session_message() for proper history tracking

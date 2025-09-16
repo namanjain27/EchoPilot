@@ -5,12 +5,10 @@ from typing import Dict, Any
 
 from ..models.requests import SessionEndRequest
 from ..models.responses import SessionEndResponse, SessionStartResponse, SessionHistoryResponse, SessionClearResponse
+from ..dependencies import get_or_create_session, get_session_messages, clear_session, _sessions
 from echo_ui import initialize_agent, save_current_chat_session, clear_chat_session
 
 router = APIRouter(prefix="/api/v1", tags=["session"])
-
-# In-memory session storage
-sessions: Dict[str, Dict[str, Any]] = {}
 
 
 @router.post("/session/start", response_model=SessionStartResponse)
@@ -20,9 +18,6 @@ async def start_session():
     Function Mapping: echo_ui.initialize_agent() + session management
     """
     try:
-        # Generate unique session ID
-        session_id = str(uuid.uuid4())
-        
         # Initialize agent
         agent_initialized = False
         try:
@@ -31,12 +26,12 @@ async def start_session():
         except Exception as e:
             raise HTTPException(status_code=503, detail=f"Agent initialization failed: {str(e)}")
         
-        # Create new session
-        sessions[session_id] = {
-            "messages": [],
-            "created_at": datetime.now(),
-            "agent_initialized": agent_initialized
-        }
+        # Create new session using dependencies
+        session_id = get_or_create_session()
+        
+        # Add agent initialization status to session
+        if session_id in _sessions:
+            _sessions[session_id]["agent_initialized"] = agent_initialized
         
         return SessionStartResponse(
             session_id=session_id,
@@ -59,14 +54,14 @@ async def end_session(request: SessionEndRequest):
         session_id = request.session_id
         
         # Check if session exists
-        if session_id not in sessions:
+        if session_id not in _sessions:
             raise HTTPException(status_code=404, detail="Session not found")
         
         # Save current chat session
         save_current_chat_session()
         
         # Remove session from memory
-        del sessions[session_id]
+        del _sessions[session_id]
         
         return SessionEndResponse(
             success=True,
@@ -87,19 +82,28 @@ async def get_session_history(session_id: str):
     """
     try:
         # Check if session exists
-        if session_id not in sessions:
+        if session_id not in _sessions:
             raise HTTPException(status_code=404, detail="Session not found")
         
-        session_data = sessions[session_id]
-        messages = session_data.get("messages", [])
+        # Get messages from dependencies session storage
+        messages = get_session_messages(session_id)
         
         # Transform messages to API-friendly format
         api_messages = []
         for msg in messages:
+            # Handle different message types (HumanMessage, AIMessage, etc.)
+            if hasattr(msg, 'type') and hasattr(msg, 'content'):
+                role = "user" if msg.type == "human" else "assistant"
+                content = msg.content
+            else:
+                # Fallback for dict-like messages
+                role = msg.get("role", "unknown")
+                content = msg.get("content", "")
+            
             api_messages.append({
-                "role": msg.get("role", "unknown"),
-                "content": msg.get("content", ""),
-                "timestamp": msg.get("timestamp", datetime.now().isoformat())
+                "role": role,
+                "content": content,
+                "timestamp": datetime.now().isoformat()
             })
         
         return SessionHistoryResponse(
@@ -114,21 +118,18 @@ async def get_session_history(session_id: str):
 
 
 @router.delete("/session/clear", response_model=SessionClearResponse)
-async def clear_session(session_id: str):
+async def clear_session_endpoint(session_id: str):
     """
     Clear current session without saving
     Function Mapping: echo_ui.clear_chat_session()
     """
     try:
         # Check if session exists
-        if session_id not in sessions:
+        if session_id not in _sessions:
             raise HTTPException(status_code=404, detail="Session not found")
         
-        # Clear chat session using echo_ui function
-        clear_chat_session()
-        
-        # Remove session from memory without saving
-        del sessions[session_id]
+        # Clear chat session using dependencies function
+        clear_session(session_id)
         
         return SessionClearResponse(
             success=True,
