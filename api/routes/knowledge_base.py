@@ -4,8 +4,9 @@ import tempfile
 import os
 from pathlib import Path
 
-from ..models.responses import KBUploadResponse
+from ..models.responses import KBUploadResponse, KBStatusResponse
 from data_ingestion import ingest_file_with_feedback
+from echo_ui import get_vector_store_status
 
 router = APIRouter(prefix="/api/v1", tags=["knowledge_base"])
 
@@ -122,3 +123,33 @@ async def upload_files_to_kb(
         errors=errors,
         details=results
     )
+
+
+@router.get("/knowledge-base/status", response_model=KBStatusResponse)
+async def get_kb_status():
+    """
+    Get KB stats and document count
+    Function Mapping: echo_ui.get_vector_store_status()
+    """
+    try:
+        vector_status = get_vector_store_status()
+        
+        # Map the response to our API model
+        status = vector_status.get("status", "error")
+        document_count = vector_status.get("approx_docs", 0)
+        collection_name = "default_collection"  # Default collection name
+        error_message = vector_status.get("error") if status == "error" else None
+        
+        return KBStatusResponse(
+            status=status,
+            document_count=document_count,
+            collection_name=collection_name,
+            error_message=error_message
+        )
+    except Exception as e:
+        return KBStatusResponse(
+            status="error",
+            document_count=0,
+            collection_name="default_collection",
+            error_message=str(e)
+        )

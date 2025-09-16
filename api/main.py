@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
-from .routes import chat, knowledge_base
+from .routes import chat, knowledge_base, session
 
 # Create FastAPI application
 app = FastAPI(
@@ -23,6 +23,7 @@ app.add_middleware(
 # Include routers
 app.include_router(chat.router)
 app.include_router(knowledge_base.router)
+app.include_router(session.router)
 
 @app.get("/")
 async def root():

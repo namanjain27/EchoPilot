@@ -11,3 +11,7 @@ class ChatRequest(BaseModel):
 class KBUploadRequest(BaseModel):
     # Files will be handled via FastAPI Form parameters, not Pydantic model
     pass
+
+
+class SessionEndRequest(BaseModel):
+    session_id: str
