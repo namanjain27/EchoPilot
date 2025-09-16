@@ -31,7 +31,7 @@ def ensure_agent_initialized():
 async def chat(
     message: str = Form(...),
     session_id: Optional[str] = Form(None),
-    files: Optional[List[UploadFile]] = File(None)
+    files: List[UploadFile] = File(default=[])
 ):
     """
     Process user query with optional file attachments
