@@ -4,8 +4,8 @@ from datetime import datetime
 from typing import Dict, Any
 
 from ..models.requests import SessionEndRequest
-from ..models.responses import SessionEndResponse, SessionStartResponse
-from echo_ui import initialize_agent, save_current_chat_session
+from ..models.responses import SessionEndResponse, SessionStartResponse, SessionHistoryResponse, SessionClearResponse
+from echo_ui import initialize_agent, save_current_chat_session, clear_chat_session
 
 router = APIRouter(prefix="/api/v1", tags=["session"])
 
@@ -77,3 +77,65 @@ async def end_session(request: SessionEndRequest):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to end session: {str(e)}")
+
+
+@router.get("/session/history", response_model=SessionHistoryResponse)
+async def get_session_history(session_id: str):
+    """
+    Get current session messages
+    Function Mapping: echo_ui.get_current_chat_messages()
+    """
+    try:
+        # Check if session exists
+        if session_id not in sessions:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        session_data = sessions[session_id]
+        messages = session_data.get("messages", [])
+        
+        # Transform messages to API-friendly format
+        api_messages = []
+        for msg in messages:
+            api_messages.append({
+                "role": msg.get("role", "unknown"),
+                "content": msg.get("content", ""),
+                "timestamp": msg.get("timestamp", datetime.now().isoformat())
+            })
+        
+        return SessionHistoryResponse(
+            session_id=session_id,
+            messages=api_messages,
+            message_count=len(api_messages)
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get session history: {str(e)}")
+
+
+@router.delete("/session/clear", response_model=SessionClearResponse)
+async def clear_session(session_id: str):
+    """
+    Clear current session without saving
+    Function Mapping: echo_ui.clear_chat_session()
+    """
+    try:
+        # Check if session exists
+        if session_id not in sessions:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        # Clear chat session using echo_ui function
+        clear_chat_session()
+        
+        # Remove session from memory without saving
+        del sessions[session_id]
+        
+        return SessionClearResponse(
+            success=True,
+            session_id=session_id,
+            message="Session cleared successfully without saving"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to clear session: {str(e)}")

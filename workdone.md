@@ -117,3 +117,8 @@
 - Added SessionEndRequest, SessionEndResponse, KBStatusResponse, SessionStartResponse models to api/models/
 - Created api/routes/session.py with POST /api/v1/session/start and POST /api/v1/session/end endpoints using echo_ui functions
 - Added GET /api/v1/knowledge-base/status endpoint to api/routes/knowledge_base.py leveraging get_vector_store_status()
+
+## FastAPI SDK Implementation - Session History & Clear APIs (APIs 6,7)
+- Added SessionHistoryResponse and SessionClearResponse models to api/models/responses.py
+- Implemented GET /api/v1/session/history endpoint to retrieve chat messages for a session with message count
+- Implemented DELETE /api/v1/session/clear endpoint to clear session without saving using clear_chat_session()

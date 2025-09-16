@@ -35,3 +35,15 @@ class SessionStartResponse(BaseModel):
     session_id: str
     agent_initialized: bool
     timestamp: datetime
+
+
+class SessionHistoryResponse(BaseModel):
+    session_id: str
+    messages: List[dict]
+    message_count: int
+
+
+class SessionClearResponse(BaseModel):
+    success: bool
+    session_id: str
+    message: str
