@@ -12,7 +12,8 @@ from jira_tool import JiraTool
 import services
 from chat_mgmt import load_chat_summary, save_chat_summary
 from multiModalInputService import process_image_to_base64, process_document_to_text, parse_multimodal_input
-
+from logger_setup import setup_logger
+logger = setup_logger()
 load_dotenv()
 
 import getpass
@@ -172,7 +173,7 @@ def summarize_current_chat(current_chat_messages, old_chat_summary):
     """Summarize current chat session and append to old summary with timestamp"""
     if not current_chat_messages: return old_chat_summary
     
-    system_prompt = """Summarize the chat conversation provided. Include minimal but essential information.
+    system_prompt = """Summarize the chat conversation provided. Keep it 200 characters max.
     1. Always keep format for complete chat: user query: {what was requested}, AI response: {resolution provided with any ticket id if generated}
     2. Grade the chat session in terms of query resolution: A (fully resolved), B (partially resolved), C (unresolved)
     Keep the summary concise but informative for future context."""
@@ -185,11 +186,11 @@ def summarize_current_chat(current_chat_messages, old_chat_summary):
         
         # Handle empty responses from Gemini
         if not current_chat_summary or not current_chat_summary.content or not current_chat_summary.content.strip():
-            print("Warning: Gemini produced an empty response during summarization. Using fallback summary.")
-            fallback_summary = f"\\n\\n=== Chat Session ({current_timestamp}) ===\\nModel gave empty response. Full chat {current_chat_messages}"
+            logger.warn("Gemini produced an empty response during summarization. Using fallback summary.")
+            fallback_summary = f"\\n\\n=== Chat Session ({current_timestamp}) ===\\nModel gave empty response."
             return old_chat_summary + fallback_summary
         
-        session_summary = f"\\n\\n=== Chat Session ({current_timestamp}) ==={current_chat_summary.content}"
+        session_summary = f"=== Chat Session ({current_timestamp}) ===\\n{current_chat_summary.content}\\n\\n"
         return old_chat_summary + session_summary
         
     except Exception as e:

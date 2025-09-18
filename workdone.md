@@ -127,3 +127,8 @@
 - Fixed session management inconsistency by making all endpoints use api/dependencies.py for unified session storage
 - Updated api/routes/session.py to use _sessions from dependencies instead of local storage
 - Modified api/routes/chat.py to store user and AI messages in session using add_session_message() for proper history tracking
+
+## Logger Setup
+- Created logger_setup.py with configurable logging functionality
+- Supports console-only logging (no file output as requested)
+- Ready for warn, error, debug statements throughout the application
