@@ -19,7 +19,7 @@ Implement a hybrid scoring system combining:
 - **Semantic similarity scores** (existing vector search)
 - **Keyword matching scores** (BM25 or TF-IDF)
 - **Document quality scores** (metadata-based ranking)
-- **Recency scores** (if applicable)
+- **Recency scores**
 
 ### Implementation Process
 1. **Create scoring module** (`rag_scoring.py`)
