@@ -7,33 +7,166 @@ import docx2txt
 from pathlib import Path
 from langchain.schema import Document
 from services import vector_store
+from datetime import datetime
+import hashlib
 
 ## want this to be a separate layer for data ingestion into the vector db - chromaDB
 ## a function that takes multi-file input and stores them in the vector db
 logger = logging.getLogger(__name__)
 
+def create_enhanced_metadata(file_path: Path, chunk_index: int, total_chunks: int, word_count: int, char_count: int, page_number: int = None) -> dict:
+    """
+    Create comprehensive metadata for document chunks to enable effective retrieval scoring
+
+    Args:
+        file_path: Path to the source file
+        chunk_index: Index of this chunk within the document (0-based)
+        total_chunks: Total number of chunks for this document
+        word_count: Number of words in the chunk
+        char_count: Number of characters in the chunk
+        page_number: Page number if applicable (for PDFs)
+
+    Returns:
+        dict: Enhanced metadata for scoring during retrieval
+    """
+    file_stats = file_path.stat()
+
+    # Basic file information
+    metadata = {
+        # File identification
+        "source": str(file_path),
+        "filename": file_path.name,
+        "file_extension": file_path.suffix.lower(),
+        "file_size_bytes": file_stats.st_size,
+
+        # Temporal information for recency scoring
+        "ingestion_timestamp": datetime.now().isoformat(),
+        "file_modified_timestamp": datetime.fromtimestamp(file_stats.st_mtime).isoformat(),
+        "file_created_timestamp": datetime.fromtimestamp(file_stats.st_ctime).isoformat(),
+
+        # Document structure for position-based scoring
+        "chunk_index": chunk_index,
+        "total_chunks": total_chunks,
+        "chunk_position_ratio": chunk_index / max(total_chunks - 1, 1),  # 0.0 to 1.0
+
+        # Content quality metrics
+        "word_count": word_count,
+        "char_count": char_count,
+        "content_density": word_count / max(char_count, 1),  # words per character
+
+        # Document type for format-based scoring
+        "document_type": get_document_type(file_path.suffix.lower()),
+
+        # Quality indicators
+        "is_first_chunk": chunk_index == 0,
+        "is_last_chunk": chunk_index == total_chunks - 1,
+        "relative_chunk_size": char_count,  # Will be used for size-based scoring
+    }
+
+    # Add page number for PDFs
+    if page_number is not None:
+        metadata["page_number"] = page_number
+        metadata["is_first_page"] = page_number == 1
+
+    return metadata
+
+def get_document_type(file_extension: str) -> str:
+    """
+    Determine document type for quality scoring
+    """
+    type_mapping = {
+        '.pdf': 'formatted_document',
+        '.docx': 'formatted_document',
+        '.txt': 'plain_text',
+        '.md': 'structured_text'
+    }
+    return type_mapping.get(file_extension, 'unknown')
+
 ## ------Extraction processors--------
 def extract_docx(file_path) -> list:
-    """Extract text from DOCX files and return as Document list"""
-    text = docx2txt.process(file_path) 
-    document = Document(page_content=text, metadata={"source": str(file_path)})
+    """Extract text from DOCX files and return as Document list with enhanced metadata"""
+    text = docx2txt.process(file_path)
+    file_path_obj = Path(file_path)
+
+    # Create enhanced metadata for single document extraction
+    metadata = create_enhanced_metadata(
+        file_path=file_path_obj,
+        chunk_index=0,
+        total_chunks=1,
+        word_count=len(text.split()),
+        char_count=len(text)
+    )
+
+    document = Document(page_content=text, metadata=metadata)
     return [document]
 
 def extract_pdf(file_path) -> list:
-    """Extract text from PDF files and return as Document list"""
-    pdf_loader = PyPDFLoader(file_path) 
+    """Extract text from PDF files and return as Document list with enhanced metadata"""
+    pdf_loader = PyPDFLoader(file_path)
     try:
         pages = pdf_loader.load()
         print(f"PDF has been loaded and has {len(pages)} pages")
-        return pages
+
+        # Enhance metadata for each page with position and page information
+        file_path_obj = Path(file_path)
+        enhanced_pages = []
+
+        for idx, page in enumerate(pages):
+            # Get original page number from metadata if available
+            original_page_num = page.metadata.get('page', idx + 1)
+
+            # Create enhanced metadata for this page
+            enhanced_metadata = create_enhanced_metadata(
+                file_path=file_path_obj,
+                chunk_index=idx,
+                total_chunks=len(pages),
+                word_count=len(page.page_content.split()),
+                char_count=len(page.page_content),
+                page_number=original_page_num
+            )
+
+            # Preserve any existing metadata and merge with enhanced metadata
+            enhanced_metadata.update(page.metadata)
+
+            enhanced_page = Document(
+                page_content=page.page_content,
+                metadata=enhanced_metadata
+            )
+            enhanced_pages.append(enhanced_page)
+
+        return enhanced_pages
     except Exception as e:
         print(f"Error loading PDF: {e}")
         return None
 
 def extract_txt(file_path) -> list:
-    """Extract text from TXT and MD files and return as Document list"""
+    """Extract text from TXT and MD files and return as Document list with enhanced metadata"""
     loader = TextLoader(file_path, encoding="utf-8")
-    return loader.load()  # returns List[Document]
+    documents = loader.load()
+
+    # Enhance metadata for text documents
+    file_path_obj = Path(file_path)
+    enhanced_documents = []
+
+    for idx, doc in enumerate(documents):
+        enhanced_metadata = create_enhanced_metadata(
+            file_path=file_path_obj,
+            chunk_index=idx,
+            total_chunks=len(documents),
+            word_count=len(doc.page_content.split()),
+            char_count=len(doc.page_content)
+        )
+
+        # Preserve any existing metadata and merge with enhanced metadata
+        enhanced_metadata.update(doc.metadata)
+
+        enhanced_doc = Document(
+            page_content=doc.page_content,
+            metadata=enhanced_metadata
+        )
+        enhanced_documents.append(enhanced_doc)
+
+    return enhanced_documents
 
 def ingest_file_with_feedback(file_path: str, original_file_name: str = None) -> dict:
     """Modified version of file ingestion that returns detailed status for UI"""
@@ -71,11 +204,34 @@ def ingest_file_with_feedback(file_path: str, original_file_name: str = None) ->
             chunk_size=1000,
             chunk_overlap=200
         )
-        
+
         pages_split = text_splitter.split_documents(file_content)
-        
-        # Store in vector DB
-        vector_store.add_documents(documents=pages_split)
+
+        # Update metadata for chunked documents with proper chunk indexing
+        enhanced_chunks = []
+        for chunk_idx, chunk in enumerate(pages_split):
+            # Create enhanced metadata for this chunk
+            enhanced_metadata = create_enhanced_metadata(
+                file_path=file_path,
+                chunk_index=chunk_idx,
+                total_chunks=len(pages_split),
+                word_count=len(chunk.page_content.split()),
+                char_count=len(chunk.page_content),
+                page_number=chunk.metadata.get('page_number')  # Preserve page number if exists
+            )
+
+            # Preserve any existing metadata and merge with enhanced metadata
+            original_metadata = chunk.metadata.copy()
+            enhanced_metadata.update(original_metadata)
+
+            enhanced_chunk = Document(
+                page_content=chunk.page_content,
+                metadata=enhanced_metadata
+            )
+            enhanced_chunks.append(enhanced_chunk)
+
+        # Store in vector DB with enhanced metadata
+        vector_store.add_documents(documents=enhanced_chunks)
         
         return {"success": True, "message": f"Successfully processed {len(pages_split)} chunks", "file_name": file_name}
         
@@ -137,11 +293,34 @@ def ingest_file_to_vectordb(file_paths) -> None:
                 chunk_size=1000,
                 chunk_overlap=200
             )
-            
+
             pages_split = text_splitter.split_documents(file_content)
-            
-            # Store in vector DB
-            vector_store.add_documents(documents = pages_split)
+
+            # Update metadata for chunked documents with proper chunk indexing
+            enhanced_chunks = []
+            for chunk_idx, chunk in enumerate(pages_split):
+                # Create enhanced metadata for this chunk
+                enhanced_metadata = create_enhanced_metadata(
+                    file_path=file_path,
+                    chunk_index=chunk_idx,
+                    total_chunks=len(pages_split),
+                    word_count=len(chunk.page_content.split()),
+                    char_count=len(chunk.page_content),
+                    page_number=chunk.metadata.get('page_number')  # Preserve page number if exists
+                )
+
+                # Preserve any existing metadata and merge with enhanced metadata
+                original_metadata = chunk.metadata.copy()
+                enhanced_metadata.update(original_metadata)
+
+                enhanced_chunk = Document(
+                    page_content=chunk.page_content,
+                    metadata=enhanced_metadata
+                )
+                enhanced_chunks.append(enhanced_chunk)
+
+            # Store in vector DB with enhanced metadata
+            vector_store.add_documents(documents=enhanced_chunks)
             print(f"Successfully ingested {file_path.name}")
             successful_files.append(file_path.name)
             
