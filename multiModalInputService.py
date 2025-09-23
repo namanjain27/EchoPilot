@@ -121,6 +121,9 @@ def process_uploaded_files(uploaded_files):
             tmp_file.write(uploaded_file.getvalue())
             tmp_file_path = tmp_file.name
             
+        # TODO: what does getvalue() do here? in image_file isn't there data duplication?
+        # TODO: are we storing these uploaded temp files? if not, do it.
+
         if file_extension in image_extensions:
             # Image file
             image_files.append(tmp_file_path)

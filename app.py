@@ -169,7 +169,7 @@ def render_chat_section():
         with chat_container:
             st.chat_message("user").write(display_message)
         
-        # Get AI response
+        # Get AI response [Main AI agent call]
         with st.spinner("Thinking..."):
             try:
                 ai_response = process_user_message(user_input, processed_files)

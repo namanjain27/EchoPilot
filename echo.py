@@ -12,6 +12,7 @@ from jira_tool import JiraTool
 import services
 from chat_mgmt import load_chat_summary, save_chat_summary
 from multiModalInputService import process_image_to_base64, process_document_to_text, parse_multimodal_input
+from rag_scoring import score_documents
 from logger_setup import setup_logger
 logger = setup_logger()
 load_dotenv()
@@ -41,16 +42,71 @@ def get_tools():
     def retriever_tool(query: str) -> str:
         """
         This tool searches and returns the information from the rentomojo knowledge base.
+        Use this tool multiple times with different keyword searches for complex queries that have multiple aspects.
+        For simple, focused queries, one search is sufficient.
         """
 
-        docs = retriever.invoke(query)
-        if not docs: return "I found no relevant information in my knowledge base."
+        # Get documents with similarity scores
+        docs_with_scores = retriever.invoke_with_scores(query) if hasattr(retriever, 'invoke_with_scores') else None
         
-        results = []
-        for i, doc in enumerate(docs):
-            results.append(f"Document {i+1}:\\n{doc.page_content}")
-        
-        return "\\n\\n".join(results)
+        if docs_with_scores is None:
+            # Fallback to regular retrieval if scoring not available
+            logger.info("retriever tool did not had the attr for invoke_with_scores")
+            docs = retriever.invoke(query)
+            if not docs:
+                return "I found no relevant information in my knowledge base."
+
+            # Use RAG scoring service to improve results
+            try:
+                # Extract similarity scores (not available in fallback)
+                similarity_scores = [0.7] * len(docs)  # Default scores for fallback
+                scored_docs = score_documents(query, docs, similarity_scores, threshold=0.2)
+
+                if not scored_docs:
+                    return "I found no sufficiently relevant information in my knowledge base."
+
+                # Format top results
+                results = []
+                for i, (doc, score) in enumerate(scored_docs[:8]):  # Top 8 results
+                    results.append(f"Document {i+1} (relevance: {score:.2f}):\\n{doc.page_content}")
+
+                return "\\n\\n".join(results)
+
+            except Exception as e:
+                logger.warning(f"RAG scoring failed, using basic retrieval: {e}")
+                # Fallback to original format
+                results = []
+                for i, doc in enumerate(docs):
+                    results.append(f"Document {i+1}:\\n{doc.page_content}")
+                return "\\n\\n".join(results)
+
+        else:
+            # Enhanced retrieval with similarity scores
+            docs, similarity_scores = docs_with_scores
+            if not docs:
+                return "I found no relevant information in my knowledge base."
+
+            try:
+                # Apply RAG scoring
+                scored_docs = score_documents(query, docs, similarity_scores, threshold=0.2)
+
+                if not scored_docs:
+                    return "I found no sufficiently relevant information in my knowledge base."
+
+                # Format results with relevance scores
+                results = []
+                for i, (doc, score) in enumerate(scored_docs[:8]):  # Top 8 results
+                    results.append(f"Document {i+1} (relevance: {score:.2f}):\\n{doc.page_content}")
+
+                return "\\n\\n".join(results)
+
+            except Exception as e:
+                logger.warning(f"RAG scoring failed, using basic retrieval: {e}")
+                # Fallback to original format
+                results = []
+                for i, doc in enumerate(docs):
+                    results.append(f"Document {i+1}:\\n{doc.page_content}")
+                return "\\n\\n".join(results)
 
     @tool
     def create_jira_ticket(summary: str, description: str, intent: str, urgency: str, sentiment: str) -> str:
@@ -94,20 +150,33 @@ def create_agent():
             return False
 
     system_prompt_llm = """
-You are an intelligent AI assistant who answers questions based on the documents in your knowledge base and perform tool calling. User query can contain images and extracted data from documents.  
-Use the retriever tool to get trusted answers, and you can make multiple calls if needed. Answer only the latest user query (chat summary are for old context).
-Always ask permission before ticket creation. You must only answer questions related to - Rentomojo and its services. This includes answering FAQs, queries related to service and TnC, analyzing service requests and complaints regarding renting furniture, functioning of Rentomojo's website and app. You should politely refuse questions outside of aforementioned domains, related to - joke, general world, news, general chit-chat.
+You are an intelligent AI assistant who answers questions based on the documents in your knowledge base and perform tool calling. User query can contain images and extracted data from documents.
+
+**Retrieval Strategy:**
+- For SIMPLE, focused queries: Use retriever_tool ONCE with the main query terms
+- For COMPLEX queries with multiple aspects: Make 2-3 targeted searches with different keywords
+  Example Complex Query: "What are payment policies for furniture upgrades and cancellation fees?"
+  → Search 1: "payment policies subscription changes billing"
+  → Search 2: "furniture upgrade fees charges"
+  → Search 3: "cancellation fees rental termination"
+- AVOID redundant searches - if first search covers the topic well, don't repeat
+- Each search returns relevance-scored results - use this to assess coverage
+
+Answer only the latest user query (chat summary are for old context). Always ask permission before ticket creation.
+
+You must only answer questions related to - Rentomojo and its services. This includes answering FAQs, queries related to service and TnC, analyzing service requests and complaints regarding renting furniture, functioning of Rentomojo's website and app. You should politely refuse questions outside of aforementioned domains, related to - joke, general world, news, general chit-chat.
+
 When images/added documents are provided:
 - Analyze them thoroughly and describe relevant details
 - Connect image content to knowledge base information when applicable
 
-Decision flow:
+**Decision flow:**
 1. First check intent (query, complaint, service/feature request), as well as urgency and sentiment (will be used in creating jira ticket if needed).
-2. If query → analyze any provided images, try a simple RAG answer with retriever. If not found, offer to create a ticket to add missing files into knowledge base.
+2. If query → analyze any provided images, determine if simple or complex search needed, use retriever strategically. If not found, offer to create a ticket to add missing files into knowledge base.
 3. If complaint →
-3.1. If valid per KB or supported by image evidence → offer to create a complaint ticket.
-3.2. If invalid per KB → explain reasons with citations.
-4. If service/feature request → analyze images for context, ask any clarifying questions if needed, then offer to create a ticket.
+3.1. If valid as per KB → offer to create a complaint ticket.
+3.2. If invalid as per KB → explain reasons with citations.
+4. If service/feature request → ask any clarifying questions if needed, then offer to create a ticket.
 """
 
     # LLM Agent

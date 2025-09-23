@@ -144,3 +144,6 @@
 - Fixed redundant content storage by removing text content from metadata, keeping only computed metrics like word count and character count
 - Created rag_scoring.py service implementing Phase 1 enhancement with hybrid scoring combining semantic similarity, keyword matching, quality metrics, and recency scores
 - Implemented RAGScoringService class with configurable weights and comprehensive scoring algorithms for improved document relevance ranking
+- Enhanced echo.py with intelligent multi-search capability using Approach B: LLM-directed multiple retrieval tool calls
+- Integrated RAG scoring service with retriever_tool for relevance-scored results and threshold filtering
+- Updated system prompt to guide LLM on when to make multiple targeted searches vs single search based on query complexity
