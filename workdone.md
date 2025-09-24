@@ -152,3 +152,9 @@
 - Enhanced echo.py with intelligent multi-search capability using Approach B: LLM-directed multiple retrieval tool calls
 - Integrated RAG scoring service with retriever_tool for relevance-scored results and threshold filtering
 - Updated system prompt to guide LLM on when to make multiple targeted searches vs single search based on query complexity
+
+## Sept 24, 2025 - Phase 1: Multi-tenant RBAC Infrastructure Implementation
+- Extended create_enhanced_metadata() function in data_ingestion.py to include tenant-id, access_roles, and document_visibility metadata fields
+- Modified ingest_file_with_feedback() and ingest_file_to_vectordb() functions to accept tenant context with default values (tenant_id="default", access_roles=["customer"], document_visibility="Public")
+- Added comprehensive tenant-aware Pydantic models to api/models/requests.py including UserRole and DocumentVisibility enums, TenantRequest base class, and ChatRequestWithTenant/KBUploadRequestWithTenant models
+- Implemented tenant-aware response models in api/models/responses.py with TenantAwareResponse base class and extended ChatResponseWithTenant, KBUploadResponseWithTenant, KBStatusResponseWithTenant models

@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 config = get_config()
 doc_processing_config = config.get_section('document_processing')
 
-def create_enhanced_metadata(file_path: Path, chunk_index: int, total_chunks: int, word_count: int, char_count: int, page_number: int = None) -> dict:
+def create_enhanced_metadata(file_path: Path, chunk_index: int, total_chunks: int, word_count: int, char_count: int, page_number: int = None, tenant_id: str = "default", access_roles: list = None, document_visibility: str = "Public") -> dict:
     """
     Create comprehensive metadata for document chunks to enable effective retrieval scoring
 
@@ -30,11 +30,18 @@ def create_enhanced_metadata(file_path: Path, chunk_index: int, total_chunks: in
         word_count: Number of words in the chunk
         char_count: Number of characters in the chunk
         page_number: Page number if applicable (for PDFs)
+        tenant_id: Unique identifier for tenant (default: "default")
+        access_roles: List of roles that can access this document (default: ["customer"])
+        document_visibility: Document visibility level (default: "Public")
 
     Returns:
-        dict: Enhanced metadata for scoring during retrieval
+        dict: Enhanced metadata for scoring during retrieval and tenant filtering
     """
     file_stats = file_path.stat()
+
+    # Set default access roles if not provided
+    if access_roles is None:
+        access_roles = ["customer"]
 
     # Basic file information
     metadata = {
@@ -43,6 +50,11 @@ def create_enhanced_metadata(file_path: Path, chunk_index: int, total_chunks: in
         "filename": file_path.name,
         "file_extension": file_path.suffix.lower(),
         "file_size_bytes": file_stats.st_size,
+
+        # Multi-tenant and RBAC metadata
+        "tenant_id": tenant_id,
+        "access_roles": access_roles,
+        "document_visibility": document_visibility,
 
         # Temporal information for recency scoring
         "ingestion_timestamp": datetime.now().isoformat(),
@@ -179,8 +191,8 @@ def extract_txt(file_path) -> list:
 
     return enhanced_documents
 
-def ingest_file_with_feedback(file_path: str, original_file_name: str = None) -> dict:
-    """Modified version of file ingestion that returns detailed status for UI"""
+def ingest_file_with_feedback(file_path: str, original_file_name: str = None, tenant_id: str = "default", access_roles: list = None, document_visibility: str = "Public") -> dict:
+    """Modified version of file ingestion that returns detailed status for UI with tenant support"""
     try:
         file_path = Path(file_path)
         file_name = original_file_name if original_file_name else file_path.name
@@ -222,17 +234,20 @@ def ingest_file_with_feedback(file_path: str, original_file_name: str = None) ->
 
         pages_split = text_splitter.split_documents(file_content)
 
-        # Update metadata for chunked documents with proper chunk indexing
+        # Update metadata for chunked documents with proper chunk indexing and tenant information
         enhanced_chunks = []
         for chunk_idx, chunk in enumerate(pages_split):
-            # Create enhanced metadata for this chunk
+            # Create enhanced metadata for this chunk with tenant information
             enhanced_metadata = create_enhanced_metadata(
                 file_path=file_path,
                 chunk_index=chunk_idx,
                 total_chunks=len(pages_split),
                 word_count=len(chunk.page_content.split()),
                 char_count=len(chunk.page_content),
-                page_number=chunk.metadata.get('page_number')  # Preserve page number if exists
+                page_number=chunk.metadata.get('page_number'),  # Preserve page number if exists
+                tenant_id=tenant_id,
+                access_roles=access_roles,
+                document_visibility=document_visibility
             )
 
             # Preserve any existing metadata and merge with enhanced metadata
@@ -254,14 +269,17 @@ def ingest_file_with_feedback(file_path: str, original_file_name: str = None) ->
         return {"success": False, "message": f"Error: {str(e)}", "file_name": file_path.name if file_path else "unknown"}
 
 ## ----------main ingestion---------
-def ingest_file_to_vectordb(file_paths) -> None:
+def ingest_file_to_vectordb(file_paths, tenant_id: str = "default", access_roles: list = None, document_visibility: str = "Public") -> None:
     """
     Main function to ingest one or multiple files into ChromaDB vector store
-    Supports: PDF, DOCX, TXT, MD file extensions
-    
+    Supports: PDF, DOCX, TXT, MD file extensions with multi-tenant support
+
     Args:
         file_paths (str or list): Path(s) to the file(s) to ingest
-        
+        tenant_id (str): Unique identifier for tenant (default: "default")
+        access_roles (list): List of roles that can access documents (default: ["customer"])
+        document_visibility (str): Document visibility level (default: "Public")
+
     Note:
         Skips unsupported or missing files and continues processing others
     """
@@ -315,17 +333,20 @@ def ingest_file_to_vectordb(file_paths) -> None:
 
             pages_split = text_splitter.split_documents(file_content)
 
-            # Update metadata for chunked documents with proper chunk indexing
+            # Update metadata for chunked documents with proper chunk indexing and tenant information
             enhanced_chunks = []
             for chunk_idx, chunk in enumerate(pages_split):
-                # Create enhanced metadata for this chunk
+                # Create enhanced metadata for this chunk with tenant information
                 enhanced_metadata = create_enhanced_metadata(
                     file_path=file_path,
                     chunk_index=chunk_idx,
                     total_chunks=len(pages_split),
                     word_count=len(chunk.page_content.split()),
                     char_count=len(chunk.page_content),
-                    page_number=chunk.metadata.get('page_number')  # Preserve page number if exists
+                    page_number=chunk.metadata.get('page_number'),  # Preserve page number if exists
+                    tenant_id=tenant_id,
+                    access_roles=access_roles,
+                    document_visibility=document_visibility
                 )
 
                 # Preserve any existing metadata and merge with enhanced metadata
