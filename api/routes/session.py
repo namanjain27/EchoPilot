@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime
 from typing import Dict, Any
 
-from ..models.requests import SessionEndRequest
+from ..models.requests import SessionEndRequest, UserRole
 from ..models.responses import SessionEndResponse, SessionStartResponse, SessionHistoryResponse, SessionClearResponse
 from ..dependencies import get_or_create_session, get_session_messages, clear_session, _sessions
 from echo_ui import initialize_agent, save_current_chat_session, clear_chat_session
@@ -11,28 +11,51 @@ from echo_ui import initialize_agent, save_current_chat_session, clear_chat_sess
 router = APIRouter(prefix="/api/v1", tags=["session"])
 
 
+def get_session_tenant_context(session_id: str) -> Dict[str, str]:
+    """Get tenant context from session if available"""
+    if session_id in _sessions:
+        session_data = _sessions[session_id]
+        return {
+            "tenant_id": session_data.get("tenant_id", "default"),
+            "user_role": session_data.get("user_role", "customer")
+        }
+    return {"tenant_id": "default", "user_role": "customer"}
+
+
 @router.post("/session/start", response_model=SessionStartResponse)
-async def start_session():
+async def start_session(
+    tenant_id: str = "default",
+    user_role: str = "customer"
+):
     """
-    Initialize new chat session
+    Initialize new chat session with optional tenant context
     Function Mapping: echo_ui.initialize_agent() + session management
     """
     try:
-        # Initialize agent
+        # Validate user role if provided
+        if user_role != "customer":
+            try:
+                UserRole(user_role)
+            except ValueError:
+                raise HTTPException(status_code=400, detail=f"Invalid user_role. Must be one of: {[r.value for r in UserRole]}")
+
+        # Initialize agent with tenant context
         agent_initialized = False
         try:
-            initialize_agent()
+            initialize_agent(tenant_id=tenant_id, user_role=user_role)
             agent_initialized = True
         except Exception as e:
             raise HTTPException(status_code=503, detail=f"Agent initialization failed: {str(e)}")
-        
+
         # Create new session using dependencies
         session_id = get_or_create_session()
-        
-        # Add agent initialization status to session
+
+        # Add agent initialization status and tenant context to session
         if session_id in _sessions:
             _sessions[session_id]["agent_initialized"] = agent_initialized
-        
+            _sessions[session_id]["tenant_id"] = tenant_id
+            _sessions[session_id]["user_role"] = user_role
+
         return SessionStartResponse(
             session_id=session_id,
             agent_initialized=agent_initialized,
@@ -140,3 +163,31 @@ async def clear_session_endpoint(session_id: str):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to clear session: {str(e)}")
+
+
+@router.get("/session/info")
+async def get_session_info(session_id: str):
+    """
+    Get session information including tenant context
+    """
+    try:
+        # Check if session exists
+        if session_id not in _sessions:
+            raise HTTPException(status_code=404, detail="Session not found")
+
+        # Get session data
+        session_data = _sessions[session_id]
+        tenant_context = get_session_tenant_context(session_id)
+
+        return {
+            "session_id": session_id,
+            "tenant_id": tenant_context["tenant_id"],
+            "user_role": tenant_context["user_role"],
+            "agent_initialized": session_data.get("agent_initialized", False),
+            "created_at": session_data.get("created_at", datetime.now().isoformat()),
+            "message_count": len(get_session_messages(session_id))
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get session info: {str(e)}")
