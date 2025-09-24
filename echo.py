@@ -34,13 +34,17 @@ retriever = services.vector_store.as_retriever(
     search_kwargs={"k": retrieval_config.get('k', 5)} # K is the amount of chunks to return
 )
 
-def get_tools():
-    """Get the standard tools for the agent"""
-    # Create retriever using config values
+def get_tools(tenant_id: str = "default", user_role: str = "customer"):
+    """Get tenant-aware tools for the agent with RBAC filtering"""
+    # Create tenant-aware retriever using services module
     retrieval_config = config.get_section('retrieval')
-    retriever = services.vector_store.as_retriever(
-        search_type=retrieval_config.get('search_type', 'similarity'),
-        search_kwargs={"k": retrieval_config.get('k', 5)} # K is the amount of chunks to return
+    search_kwargs = {"k": retrieval_config.get('k', 5)}
+
+    # Use tenant-aware retriever from services
+    retriever = services.create_tenant_aware_retriever(
+        tenant_id=tenant_id,
+        user_role=user_role,
+        search_kwargs=search_kwargs
     )
     
     @tool
@@ -137,9 +141,9 @@ def get_tools():
     return [retriever_tool, create_jira_ticket]
 
 
-def create_agent():
-    """Create and return a compiled RAG agent"""
-    tools = get_tools()
+def create_agent(tenant_id: str = "default", user_role: str = "customer"):
+    """Create and return a compiled RAG agent with tenant context"""
+    tools = get_tools(tenant_id=tenant_id, user_role=user_role)
     tools_dict = {our_tool.name: our_tool for our_tool in tools} # Creating a dictionary of our tools
 
     model_config = config.get_section('model')

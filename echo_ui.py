@@ -11,37 +11,44 @@ import guardrails
 # Load environment variables
 load_dotenv()
 
-# Global variables for agent initialization
+# Global variables for agent initialization - now supports tenant context
 _rag_agent = None
 _current_chat_messages = []
 _old_chat_summary = ""
+_current_tenant_id = "default"
+_current_user_role = "customer"
 
-def initialize_agent():
-    """Initialize the RAG agent for UI use"""
-    global _rag_agent, _current_chat_messages, _old_chat_summary
-    
-    if _rag_agent is not None:
+def initialize_agent(tenant_id: str = "default", user_role: str = "customer"):
+    """Initialize the RAG agent for UI use with tenant context"""
+    global _rag_agent, _current_chat_messages, _old_chat_summary, _current_tenant_id, _current_user_role
+
+    # Check if we need to reinitialize due to tenant context change
+    if _rag_agent is not None and _current_tenant_id == tenant_id and _current_user_role == user_role:
         return _rag_agent
-    
+
     # Set up API key if not present
     if not os.environ.get("GOOGLE_API_KEY"):
         raise ValueError("GOOGLE_API_KEY environment variable not set")
-    
-    # Use centralized agent creation from echo.py
-    _rag_agent = create_agent()
-    
+
+    # Update tenant context
+    _current_tenant_id = tenant_id
+    _current_user_role = user_role
+
+    # Use centralized agent creation from echo.py with tenant context
+    _rag_agent = create_agent(tenant_id=tenant_id, user_role=user_role)
+
     # Load chat history
     _current_chat_messages.clear()
     _old_chat_summary = load_chat_summary()
-    
+
     return _rag_agent
 
-def process_user_message(message: str, processed_files=None) -> str:
-    """Process text message with optional files through agent and return AI response as string"""
+def process_user_message(message: str, processed_files=None, tenant_id: str = "default", user_role: str = "customer") -> str:
+    """Process text message with optional files through agent and return AI response as string with tenant context"""
     global _current_chat_messages, _old_chat_summary
-    
+
     if _rag_agent is None:
-        initialize_agent()
+        initialize_agent(tenant_id=tenant_id, user_role=user_role)
     
     try:
         # check relevance of human query first - deny if irrelevant without processing
@@ -154,18 +161,12 @@ def _summarize_current_chat(current_chat_messages, old_chat_summary):
         fallback_summary = f"\\n\\n=== Chat Session ({current_timestamp}) ===\\nChat session occurred but summary failed due to error: {str(e)}"
         return old_chat_summary + fallback_summary
 
-def get_vector_store_status() -> dict:
-    """Return basic stats about vector store"""
+def get_vector_store_status(tenant_id: str = None) -> dict:
+    """Return basic stats about vector store with optional tenant filtering"""
     try:
-        # Get collection info from ChromaDB
-        collection = services.vector_store._collection
-        count = collection.count()
-        
-        if count > 0:
-            return {"status": "ready", "approx_docs": count}
-        else:
-            return {"status": "empty", "approx_docs": 0}
-            
+        # Use services module's tenant-aware status function
+        return services.get_vector_store_status(tenant_id=tenant_id)
+
     except Exception as e:
         return {"status": "error", "approx_docs": 0, "error": str(e)}
 
@@ -196,3 +197,16 @@ def clear_chat_session():
 def get_current_chat_messages():
     """Get current chat messages for display"""
     return _current_chat_messages.copy()
+
+def get_current_tenant_context():
+    """Get current tenant context"""
+    return {
+        "tenant_id": _current_tenant_id,
+        "user_role": _current_user_role
+    }
+
+def reset_agent_for_new_tenant(tenant_id: str, user_role: str):
+    """Reset agent when tenant context changes"""
+    global _rag_agent
+    _rag_agent = None  # Force reinitialization with new context
+    initialize_agent(tenant_id=tenant_id, user_role=user_role)
