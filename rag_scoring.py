@@ -9,6 +9,7 @@ from langchain.schema import Document
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
+from config_loader import get_config
 
 logger = logging.getLogger(__name__)
 
@@ -22,26 +23,31 @@ class RAGScoringService:
     """
 
     def __init__(self,
-                 semantic_weight: float = 0.4,
-                 keyword_weight: float = 0.3,
-                 quality_weight: float = 0.2,
-                 recency_weight: float = 0.1):
+                 semantic_weight: Optional[float] = None,
+                 keyword_weight: Optional[float] = None,
+                 quality_weight: Optional[float] = None,
+                 recency_weight: Optional[float] = None):
         """
         Initialize RAG scoring service with configurable weights
 
         Args:
-            semantic_weight: Weight for semantic similarity scores
-            keyword_weight: Weight for keyword matching scores
-            quality_weight: Weight for document quality scores
-            recency_weight: Weight for recency scores
+            semantic_weight: Weight for semantic similarity scores (None to use config)
+            keyword_weight: Weight for keyword matching scores (None to use config)
+            quality_weight: Weight for document quality scores (None to use config)
+            recency_weight: Weight for recency scores (None to use config)
         """
-        self.semantic_weight = semantic_weight
-        self.keyword_weight = keyword_weight
-        self.quality_weight = quality_weight
-        self.recency_weight = recency_weight
+        # Load config and use provided weights or defaults from config
+        config = get_config()
+        scoring_config = config.get_section('rag_scoring')
+        weights = scoring_config.get('weights', {})
+
+        self.semantic_weight = semantic_weight if semantic_weight is not None else weights.get('semantic', 0.4)
+        self.keyword_weight = keyword_weight if keyword_weight is not None else weights.get('keyword', 0.3)
+        self.quality_weight = quality_weight if quality_weight is not None else weights.get('quality', 0.2)
+        self.recency_weight = recency_weight if recency_weight is not None else weights.get('recency', 0.1)
 
         # Validate weights sum to 1.0
-        total_weight = sum([semantic_weight, keyword_weight, quality_weight, recency_weight])
+        total_weight = sum([self.semantic_weight, self.keyword_weight, self.quality_weight, self.recency_weight])
         if abs(total_weight - 1.0) > 0.01:
             logger.warning(f"Scoring weights sum to {total_weight}, not 1.0. Normalizing weights.")
             self.semantic_weight /= total_weight
@@ -49,11 +55,13 @@ class RAGScoringService:
             self.quality_weight /= total_weight
             self.recency_weight /= total_weight
 
-        # Initialize TF-IDF vectorizer for keyword scoring
+        # Initialize TF-IDF vectorizer for keyword scoring using config values
+        tfidf_config = scoring_config.get('tfidf', {})
+        ngram_range = tfidf_config.get('ngram_range', [1, 2])
         self.tfidf_vectorizer = TfidfVectorizer(
-            stop_words='english',
-            max_features=1000,
-            ngram_range=(1, 2),
+            stop_words=tfidf_config.get('stop_words', 'english'),
+            max_features=tfidf_config.get('max_features', 1000),
+            ngram_range=tuple(ngram_range),  # Convert list to tuple for TfidfVectorizer
             lowercase=True
         )
         self.tfidf_fitted = False
@@ -352,13 +360,13 @@ class RAGScoringService:
                    f"quality={self.quality_weight:.2f}, "
                    f"recency={self.recency_weight:.2f}")
 
-# Default scoring service instance
+# Default scoring service instance (will use config values)
 default_scoring_service = RAGScoringService()
 
 def score_documents(query: str,
                    documents: List[Document],
                    similarity_scores: List[float],
-                   threshold: float = 0.3) -> List[Tuple[Document, float]]:
+                   threshold: Optional[float] = None) -> List[Tuple[Document, float]]:
     """
     Convenience function to score documents using default service
 
@@ -366,10 +374,14 @@ def score_documents(query: str,
         query: User query
         documents: Retrieved documents
         similarity_scores: Vector search similarity scores
-        threshold: Minimum score threshold
+        threshold: Minimum score threshold (None to use config default)
 
     Returns:
         List of (document, score) tuples above threshold, sorted by score
     """
+    if threshold is None:
+        config = get_config()
+        threshold = config.get('rag_scoring.default_threshold', 0.3)
+
     scored_docs = default_scoring_service.compute_combined_scores(query, documents, similarity_scores)
     return default_scoring_service.filter_by_threshold(scored_docs, threshold)

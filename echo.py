@@ -14,28 +14,33 @@ from chat_mgmt import load_chat_summary, save_chat_summary
 from multiModalInputService import process_image_to_base64, process_document_to_text, parse_multimodal_input
 from rag_scoring import score_documents
 from logger_setup import setup_logger
+from config_loader import get_config
 logger = setup_logger()
 load_dotenv()
 
 import getpass
 import os
 
+# Load configuration
+config = get_config()
 
 if not os.environ.get("GOOGLE_API_KEY"):
   os.environ["GOOGLE_API_KEY"] = getpass.getpass("Enter API key for Google Gemini: ")
 
-# Now we create our retriever 
+# Now we create our retriever using config values
+retrieval_config = config.get_section('retrieval')
 retriever = services.vector_store.as_retriever(
-    search_type="similarity",
-    search_kwargs={"k": 5} # K is the amount of chunks to return
+    search_type=retrieval_config.get('search_type', 'similarity'),
+    search_kwargs={"k": retrieval_config.get('k', 5)} # K is the amount of chunks to return
 )
 
 def get_tools():
     """Get the standard tools for the agent"""
-    # Create retriever  
+    # Create retriever using config values
+    retrieval_config = config.get_section('retrieval')
     retriever = services.vector_store.as_retriever(
-        search_type="similarity",
-        search_kwargs={"k": 5} # K is the amount of chunks to return
+        search_type=retrieval_config.get('search_type', 'similarity'),
+        search_kwargs={"k": retrieval_config.get('k', 5)} # K is the amount of chunks to return
     )
     
     @tool
@@ -45,13 +50,12 @@ def get_tools():
         Use this tool multiple times with different keyword searches for complex queries that have multiple aspects.
         For simple, focused queries, one search is sufficient.
         """
-
+        # TODO: handle this useless invoke_with_scores -> llm node is not configured to call it
         # Get documents with similarity scores
         docs_with_scores = retriever.invoke_with_scores(query) if hasattr(retriever, 'invoke_with_scores') else None
         
         if docs_with_scores is None:
             # Fallback to regular retrieval if scoring not available
-            logger.info("retriever tool did not had the attr for invoke_with_scores")
             docs = retriever.invoke(query)
             if not docs:
                 return "I found no relevant information in my knowledge base."
@@ -60,14 +64,16 @@ def get_tools():
             try:
                 # Extract similarity scores (not available in fallback)
                 similarity_scores = [0.7] * len(docs)  # Default scores for fallback
-                scored_docs = score_documents(query, docs, similarity_scores, threshold=0.2)
+                threshold = config.get('retrieval.threshold', 0.2)
+                scored_docs = score_documents(query, docs, similarity_scores, threshold=threshold)
 
                 if not scored_docs:
                     return "I found no sufficiently relevant information in my knowledge base."
 
                 # Format top results
                 results = []
-                for i, (doc, score) in enumerate(scored_docs[:8]):  # Top 8 results
+                max_results = config.get('chat.max_retrieval_results', 8)
+                for i, (doc, score) in enumerate(scored_docs[:max_results]):  # Top results from config
                     results.append(f"Document {i+1} (relevance: {score:.2f}):\\n{doc.page_content}")
 
                 return "\\n\\n".join(results)
@@ -88,14 +94,16 @@ def get_tools():
 
             try:
                 # Apply RAG scoring
-                scored_docs = score_documents(query, docs, similarity_scores, threshold=0.2)
+                threshold = config.get('retrieval.threshold', 0.2)
+                scored_docs = score_documents(query, docs, similarity_scores, threshold=threshold)
 
                 if not scored_docs:
                     return "I found no sufficiently relevant information in my knowledge base."
 
                 # Format results with relevance scores
                 results = []
-                for i, (doc, score) in enumerate(scored_docs[:8]):  # Top 8 results
+                max_results = config.get('chat.max_retrieval_results', 8)
+                for i, (doc, score) in enumerate(scored_docs[:max_results]):  # Top results from config
                     results.append(f"Document {i+1} (relevance: {score:.2f}):\\n{doc.page_content}")
 
                 return "\\n\\n".join(results)
@@ -134,7 +142,11 @@ def create_agent():
     tools = get_tools()
     tools_dict = {our_tool.name: our_tool for our_tool in tools} # Creating a dictionary of our tools
 
-    base_llm = init_chat_model("gemini-2.5-flash", model_provider="google_genai")
+    model_config = config.get_section('model')
+    base_llm = init_chat_model(
+        model_config.get('name', 'gemini-2.5-flash'),
+        model_provider=model_config.get('provider', 'google_genai')
+    )
     llm = base_llm.bind_tools(tools)
     
     class AgentState(TypedDict):
@@ -148,7 +160,7 @@ def create_agent():
         else:
             current_chat_messages.append(AIMessage(content=result.content)) # saving only the final AI response
             return False
-
+# TODO: we can simply tell the llm node to call the retrieval tool multiple times if needed for complex user queries. Its redundant to write a strategy for it. 
     system_prompt_llm = """
 You are an intelligent AI assistant who answers questions based on the documents in your knowledge base and perform tool calling. User query can contain images and extracted data from documents.
 
@@ -230,7 +242,11 @@ When images/added documents are provided:
 
 # For backward compatibility, keep these at module level for CLI usage
 tools = get_tools()
-base_llm = init_chat_model("gemini-2.5-flash", model_provider="google_genai")
+model_config = config.get_section('model')
+base_llm = init_chat_model(
+    model_config.get('name', 'gemini-2.5-flash'),
+    model_provider=model_config.get('provider', 'google_genai')
+)
 llm = base_llm.bind_tools(tools)
 tools_dict = {our_tool.name: our_tool for our_tool in tools} # Creating a dictionary of our tools
 
@@ -241,9 +257,10 @@ old_chat_summary = load_chat_summary()
 def summarize_current_chat(current_chat_messages, old_chat_summary):
     """Summarize current chat session and append to old summary with timestamp"""
     if not current_chat_messages: return old_chat_summary
-    
-    system_prompt = """Summarize the chat conversation provided. Keep it 200 characters max.
-    1. Always keep format for complete chat: user query: {what was requested}, AI response: {resolution provided with any ticket id if generated}
+
+    max_chars = config.get('chat.summary.max_length_chars', 200)
+    system_prompt = f"""Summarize the chat conversation provided. Keep it {max_chars} characters max.
+    1. Always keep format for complete chat: user query: (what was requested), AI response: (resolution provided with any ticket id if generated)
     2. Grade the chat session in terms of query resolution: A (fully resolved), B (partially resolved), C (unresolved)
     Keep the summary concise but informative for future context."""
     

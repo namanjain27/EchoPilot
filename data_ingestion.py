@@ -9,10 +9,15 @@ from langchain.schema import Document
 from services import vector_store
 from datetime import datetime
 import hashlib
+from config_loader import get_config
 
 ## want this to be a separate layer for data ingestion into the vector db - chromaDB
 ## a function that takes multi-file input and stores them in the vector db
 logger = logging.getLogger(__name__)
+
+# Load configuration
+config = get_config()
+doc_processing_config = config.get_section('document_processing')
 
 def create_enhanced_metadata(file_path: Path, chunk_index: int, total_chunks: int, word_count: int, char_count: int, page_number: int = None) -> dict:
     """
@@ -81,6 +86,12 @@ def get_document_type(file_extension: str) -> str:
         '.md': 'structured_text'
     }
     return type_mapping.get(file_extension, 'unknown')
+
+def get_supported_extensions():
+    """
+    Get supported file extensions from config
+    """
+    return doc_processing_config.get('supported_extensions', ['.pdf', '.docx', '.txt', '.md'])
 
 ## ------Extraction processors--------
 def extract_docx(file_path) -> list:
@@ -178,13 +189,16 @@ def ingest_file_with_feedback(file_path: str, original_file_name: str = None) ->
         if not os.path.exists(file_path):
             return {"success": False, "message": f"File not found: {file_name}", "file_name": file_name}
         
-        # Supported file processors mapping
-        supported_types = {
-            '.pdf': extract_pdf,
-            '.docx': extract_docx,
-            '.txt': extract_txt,
-            '.md': extract_txt
-        }
+        # Get supported file processors mapping from config
+        supported_extensions = get_supported_extensions()
+        supported_types = {}
+        for ext in supported_extensions:
+            if ext == '.pdf':
+                supported_types[ext] = extract_pdf
+            elif ext == '.docx':
+                supported_types[ext] = extract_docx
+            elif ext in ['.txt', '.md']:
+                supported_types[ext] = extract_txt
         
         file_extension = file_path.suffix.lower()
         
@@ -199,10 +213,11 @@ def ingest_file_with_feedback(file_path: str, original_file_name: str = None) ->
         if not file_content:
             return {"success": False, "message": f"No content extracted from file", "file_name": file_name}
         
-        # Chunking Process initiate
+        # Chunking Process initiate using config values
+        chunking_config = doc_processing_config.get('chunking', {})
         text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000,
-            chunk_overlap=200
+            chunk_size=chunking_config.get('chunk_size', 1000),
+            chunk_overlap=chunking_config.get('chunk_overlap', 200)
         )
 
         pages_split = text_splitter.split_documents(file_content)
@@ -250,13 +265,16 @@ def ingest_file_to_vectordb(file_paths) -> None:
     Note:
         Skips unsupported or missing files and continues processing others
     """
-    # Supported file processors mapping
-    supported_types = {
-        '.pdf': extract_pdf,
-        '.docx': extract_docx,
-        '.txt': extract_txt,
-        '.md': extract_txt
-    }
+    # Get supported file processors mapping from config
+    supported_extensions = get_supported_extensions()
+    supported_types = {}
+    for ext in supported_extensions:
+        if ext == '.pdf':
+            supported_types[ext] = extract_pdf
+        elif ext == '.docx':
+            supported_types[ext] = extract_docx
+        elif ext in ['.txt', '.md']:
+            supported_types[ext] = extract_txt
     
     # Convert single file path to list for uniform processing
     if isinstance(file_paths, str):
@@ -288,10 +306,11 @@ def ingest_file_to_vectordb(file_paths) -> None:
                 logger.warning(f"No content extracted from: {file_path}")
                 continue
             
-            # Chunking Process initiate
+            # Chunking Process initiate using config values
+            chunking_config = doc_processing_config.get('chunking', {})
             text_splitter = RecursiveCharacterTextSplitter(
-                chunk_size=1000,
-                chunk_overlap=200
+                chunk_size=chunking_config.get('chunk_size', 1000),
+                chunk_overlap=chunking_config.get('chunk_overlap', 200)
             )
 
             pages_split = text_splitter.split_documents(file_content)
