@@ -196,3 +196,8 @@
 - Fixed critical metadata merging bug in data_ingestion.py where enhanced metadata (containing tenant_id, access_roles, document_visibility) was being overwritten by original metadata
 - Corrected metadata merge order in both ingest_file_with_feedback() and ingest_file_to_vectordb() functions to preserve tenant context
 - Now tenant metadata properly persists in ChromaDB, enabling proper multi-tenant document filtering and access control
+
+## SaaS Generalization - Remove Rentomojo-specific References
+- Updated retriever_tool docstring to use generic "organization's knowledge base" instead of "rentomojo knowledge base"
+- Modified system_prompt_llm to remove Rentomojo-specific references, changing to generic "organization and its services"
+- Replaced specific examples with generic ones (e.g., "furniture upgrades" → "service upgrades", "renting furniture" → "organization's offerings")
