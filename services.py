@@ -92,14 +92,14 @@ def build_metadata_filter(tenant_id: str, user_role: str) -> Dict[str, Any]:
 
     # Role-based access control filter
     # Documents are accessible if:
-    # 1. User role is in the document's access_roles list, OR
+    # 1. User role has corresponding boolean field set to True, OR
     # 2. Document visibility is "Public"
 
-    # ChromaDB supports $or operator for complex filtering
-    # Documents accessible if user_role is in access_roles OR document_visibility is "Public"
+    # ChromaDB filtering using denormalized boolean fields for access roles
+    # Documents accessible if access_role_{user_role} is True OR document_visibility is "Public"
     role_filter = {
         "$or": [
-            {"access_roles": {"$contains": user_role}},
+            {f"access_role_{user_role}": True},
             {"document_visibility": "Public"}
         ]
     }

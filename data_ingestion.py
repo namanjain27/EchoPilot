@@ -53,7 +53,6 @@ def create_enhanced_metadata(file_path: Path, chunk_index: int, total_chunks: in
 
         # Multi-tenant and RBAC metadata
         "tenant_id": tenant_id,
-        "access_roles": access_roles,
         "document_visibility": document_visibility,
 
         # Temporal information for recency scoring
@@ -79,6 +78,10 @@ def create_enhanced_metadata(file_path: Path, chunk_index: int, total_chunks: in
         "is_last_chunk": chunk_index == total_chunks - 1,
         "relative_chunk_size": char_count,  # Will be used for size-based scoring
     }
+
+    # Add boolean fields for each access role (denormalized approach for ChromaDB compatibility)
+    for role in access_roles:
+        metadata[f"access_role_{role}"] = True
 
     # Add page number for PDFs
     if page_number is not None:

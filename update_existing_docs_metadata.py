@@ -6,17 +6,17 @@ This script updates existing documents in the ChromaDB vector store to include
 the new multi-tenant metadata fields: tenant_id, access_roles, and document_visibility.
 
 Usage:
-    python update_existing_docs_metadata.py --tenant_id <tenant_id> --access_role <role> [--document_visibility <visibility>] [--dry_run]
+    python update_existing_docs_metadata.py --tenant_id <tenant_id> --access_roles <role1> <role2> [--document_visibility <visibility>] [--dry_run]
 
 Examples:
     # Dry run to see what would be updated
-    python update_existing_docs_metadata.py --tenant_id "rentomojo_main" --access_role "customer" --dry_run
+    python update_existing_docs_metadata.py --tenant_id "rentomojo_main" --access_roles customer --dry_run
 
-    # Update all docs for tenant "rentomojo_main" with customer access
-    python update_existing_docs_metadata.py --tenant_id "rentomojo_main" --access_role "customer"
+    # Update all docs for tenant "rentomojo_main" with multiple access roles
+    python update_existing_docs_metadata.py --tenant_id "rentomojo_main" --access_roles customer admin
 
-    # Update with private visibility
-    python update_existing_docs_metadata.py --tenant_id "acme_corp" --access_role "vendor" --document_visibility "Private"
+    # Update with private visibility and single role
+    python update_existing_docs_metadata.py --tenant_id "acme_corp" --access_roles vendor --document_visibility "Private"
 """
 
 import argparse
@@ -43,15 +43,16 @@ class VectorDBMetadataUpdater:
         self.updated_count = 0
         self.error_count = 0
 
-    def validate_inputs(self, tenant_id: str, access_role: str, document_visibility: str) -> bool:
+    def validate_inputs(self, tenant_id: str, access_roles: list, document_visibility: str) -> bool:
         """Validate input parameters"""
-        try:
-            # Validate access role
-            UserRole(access_role)
-            logger.info(f"✓ Valid access role: {access_role}")
-        except ValueError:
-            logger.error(f"✗ Invalid access role '{access_role}'. Must be one of: {[r.value for r in UserRole]}")
-            return False
+        # Validate access roles
+        for access_role in access_roles:
+            try:
+                UserRole(access_role)
+                logger.info(f"✓ Valid access role: {access_role}")
+            except ValueError:
+                logger.error(f"✗ Invalid access role '{access_role}'. Must be one of: {[r.value for r in UserRole]}")
+                return False
 
         try:
             # Validate document visibility
@@ -89,7 +90,7 @@ class VectorDBMetadataUpdater:
             logger.error(f"Error retrieving documents: {str(e)}")
             return None
 
-    def check_documents_need_update(self, documents: Dict) -> List[int]:
+    def check_documents_need_update(self, documents: Dict, access_roles: list) -> List[int]:
         """Check which documents need metadata updates"""
         docs_needing_update = []
 
@@ -102,13 +103,21 @@ class VectorDBMetadataUpdater:
                 needs_update = True
                 missing_fields.append('tenant_id')
 
-            if 'access_roles' not in metadata:
-                needs_update = True
-                missing_fields.append('access_roles')
+            # Check for missing access role boolean fields
+            for role in access_roles:
+                role_field = f'access_role_{role}'
+                if role_field not in metadata:
+                    needs_update = True
+                    missing_fields.append(role_field)
 
             if 'document_visibility' not in metadata:
                 needs_update = True
                 missing_fields.append('document_visibility')
+
+            # Also check if old access_roles field exists (migration case)
+            if 'access_roles' in metadata:
+                needs_update = True
+                missing_fields.append('remove_old_access_roles_field')
 
             if needs_update:
                 docs_needing_update.append(i)
@@ -117,23 +126,30 @@ class VectorDBMetadataUpdater:
         logger.info(f"Documents needing update: {len(docs_needing_update)} out of {len(documents['ids'])}")
         return docs_needing_update
 
-    def create_updated_metadata(self, original_metadata: Dict, tenant_id: str, access_role: str, document_visibility: str) -> Dict:
+    def create_updated_metadata(self, original_metadata: Dict, tenant_id: str, access_roles: list, document_visibility: str) -> Dict:
         """Create updated metadata by adding tenant fields to existing metadata"""
         updated_metadata = original_metadata.copy()
+
+        # Remove old access_roles field if it exists (migration cleanup)
+        if 'access_roles' in updated_metadata:
+            del updated_metadata['access_roles']
 
         # Add multi-tenant metadata fields
         updated_metadata.update({
             'tenant_id': tenant_id,
-            'access_roles': access_role,  # Store as string since ChromaDB doesn't support lists
             'document_visibility': document_visibility,
             'metadata_updated_timestamp': datetime.now().isoformat(),
-            'metadata_update_reason': 'multi_tenant_migration'
+            'metadata_update_reason': 'boolean_access_roles_migration'
         })
+
+        # Add boolean fields for each access role (denormalized approach for ChromaDB)
+        for role in access_roles:
+            updated_metadata[f'access_role_{role}'] = True
 
         return updated_metadata
 
     def update_documents_metadata(self, documents: Dict, docs_to_update: List[int],
-                                tenant_id: str, access_role: str, document_visibility: str,
+                                tenant_id: str, access_roles: list, document_visibility: str,
                                 dry_run: bool = False) -> bool:
         """Update metadata for specified documents"""
         if dry_run:
@@ -149,7 +165,7 @@ class VectorDBMetadataUpdater:
 
                 # Create updated metadata
                 updated_metadata = self.create_updated_metadata(
-                    original_metadata, tenant_id, access_role, document_visibility
+                    original_metadata, tenant_id, access_roles, document_visibility
                 )
 
                 updated_metadatas.append(updated_metadata)
@@ -158,8 +174,10 @@ class VectorDBMetadataUpdater:
                 if dry_run:
                     logger.info(f"📄 Would update document {doc_id}:")
                     logger.info(f"   + tenant_id: {tenant_id}")
-                    logger.info(f"   + access_roles: {access_role}")
+                    logger.info(f"   + access_roles: {', '.join(access_roles)}")
                     logger.info(f"   + document_visibility: {document_visibility}")
+                    for role in access_roles:
+                        logger.info(f"   + access_role_{role}: True")
                 else:
                     logger.debug(f"Updating document {doc_id} metadata")
 
@@ -183,7 +201,7 @@ class VectorDBMetadataUpdater:
             self.error_count += 1
             return False
 
-    def verify_updates(self, updated_ids: List[str], tenant_id: str, access_role: str) -> bool:
+    def verify_updates(self, updated_ids: List[str], tenant_id: str, access_roles: list) -> bool:
         """Verify that the updates were applied correctly"""
         try:
             logger.info("Verifying updates...")
@@ -205,8 +223,16 @@ class VectorDBMetadataUpdater:
                     logger.error(f"❌ Verification failed for {doc_id}: tenant_id mismatch")
                     verification_passed = False
 
-                if metadata.get('access_roles') != access_role:
-                    logger.error(f"❌ Verification failed for {doc_id}: access_role mismatch")
+                # Verify each access role boolean field
+                for role in access_roles:
+                    role_field = f'access_role_{role}'
+                    if metadata.get(role_field) != True:
+                        logger.error(f"❌ Verification failed for {doc_id}: {role_field} not set to True")
+                        verification_passed = False
+
+                # Verify old access_roles field is removed
+                if 'access_roles' in metadata:
+                    logger.error(f"❌ Verification failed for {doc_id}: old access_roles field still exists")
                     verification_passed = False
 
                 if verification_passed:
@@ -223,20 +249,20 @@ class VectorDBMetadataUpdater:
             logger.error(f"Error during verification: {str(e)}")
             return False
 
-    def run_update(self, tenant_id: str, access_role: str, document_visibility: str = "Public", dry_run: bool = False):
+    def run_update(self, tenant_id: str, access_roles: list, document_visibility: str = "Public", dry_run: bool = False):
         """Main method to run the metadata update process"""
         logger.info("=" * 60)
         logger.info("VECTOR DATABASE METADATA UPDATE SCRIPT")
         logger.info("=" * 60)
         logger.info(f"Target Collection: {db_collection_name}")
         logger.info(f"Tenant ID: {tenant_id}")
-        logger.info(f"Access Role: {access_role}")
+        logger.info(f"Access Roles: {', '.join(access_roles)}")
         logger.info(f"Document Visibility: {document_visibility}")
         logger.info(f"Dry Run: {dry_run}")
         logger.info("=" * 60)
 
         # Step 1: Validate inputs
-        if not self.validate_inputs(tenant_id, access_role, document_visibility):
+        if not self.validate_inputs(tenant_id, access_roles, document_visibility):
             logger.error("❌ Input validation failed")
             return False
 
@@ -247,14 +273,14 @@ class VectorDBMetadataUpdater:
             return False
 
         # Step 3: Check which documents need updates
-        docs_to_update = self.check_documents_need_update(documents)
+        docs_to_update = self.check_documents_need_update(documents, access_roles)
         if not docs_to_update:
             logger.info("✅ All documents already have the required metadata fields")
             return True
 
         # Step 4: Update documents
         success = self.update_documents_metadata(
-            documents, docs_to_update, tenant_id, access_role, document_visibility, dry_run
+            documents, docs_to_update, tenant_id, access_roles, document_visibility, dry_run
         )
 
         if not success:
@@ -264,7 +290,7 @@ class VectorDBMetadataUpdater:
         # Step 5: Verify updates (only if not dry run)
         if not dry_run:
             updated_ids = [documents['ids'][i] for i in docs_to_update]
-            if not self.verify_updates(updated_ids, tenant_id, access_role):
+            if not self.verify_updates(updated_ids, tenant_id, access_roles):
                 logger.error("❌ Update verification failed")
                 return False
 
@@ -298,10 +324,11 @@ def main():
     )
 
     parser.add_argument(
-        '--access_role',
+        '--access_roles',
         required=True,
+        nargs='+',
         choices=[role.value for role in UserRole],
-        help=f'Access role to assign to all existing documents. Choices: {[role.value for role in UserRole]}'
+        help=f'Access roles to assign to all existing documents (space-separated). Choices: {[role.value for role in UserRole]}'
     )
 
     parser.add_argument(
@@ -334,7 +361,7 @@ def main():
         updater = VectorDBMetadataUpdater()
         success = updater.run_update(
             tenant_id=args.tenant_id,
-            access_role=args.access_role,
+            access_roles=args.access_roles,
             document_visibility=args.document_visibility,
             dry_run=args.dry_run
         )
