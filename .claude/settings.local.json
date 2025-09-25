@@ -8,7 +8,8 @@
       "WebFetch(domain:community.latenode.com)",
       "WebSearch",
       "WebFetch(domain:docs.langchain.com)",
-      "WebFetch(domain:www.rentomojo.com)"
+      "WebFetch(domain:www.rentomojo.com)",
+      "Bash(python3 inspect_vector_db_metadata.py:*)"
     ],
     "deny": [],
     "ask": []

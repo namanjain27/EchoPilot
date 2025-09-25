@@ -7,7 +7,7 @@ vector store to understand what fields exist and identify which documents need
 multi-tenant metadata updates.
 
 Usage:
-    python inspect_vector_db_metadata.py [--sample_size <number>] [--show_examples]
+    python inspect_vector_db_metadata.py [--sample_size <number>] [--tenant_id <tenant>] [--show_examples]
 
 Examples:
     # Quick overview
@@ -16,8 +16,11 @@ Examples:
     # Show 10 example documents
     python inspect_vector_db_metadata.py --sample_size 10 --show_examples
 
-    # Full analysis
-    python inspect_vector_db_metadata.py --sample_size 0 --show_examples
+    # Analyze specific tenant documents
+    python inspect_vector_db_metadata.py --tenant_id "my_tenant" --sample_size 5
+
+    # Full analysis for a specific tenant
+    python inspect_vector_db_metadata.py --tenant_id "my_tenant" --sample_size 0 --show_examples
 """
 
 import argparse
@@ -38,21 +41,34 @@ class VectorDBInspector:
         self.vector_store = vector_store
         self.collection = vector_store._collection
 
-    def get_documents_sample(self, sample_size: int = 5) -> dict:
-        """Get a sample of documents for analysis"""
+    def get_documents_sample(self, sample_size: int = 5, tenant_id: str = None) -> dict:
+        """Get a sample of documents for analysis, optionally filtered by tenant_id"""
         try:
-            logger.info("Retrieving documents from ChromaDB...")
+            if tenant_id:
+                logger.info(f"Retrieving documents from ChromaDB for tenant: {tenant_id}")
+                # Filter by tenant_id
+                where_clause = {"tenant_id": tenant_id}
+            else:
+                logger.info("Retrieving documents from ChromaDB...")
+                where_clause = None
 
             results = self.collection.get(
                 include=['metadatas', 'documents'],
-                limit=sample_size if sample_size > 0 else None
+                limit=sample_size if sample_size > 0 else None,
+                where=where_clause
             )
 
             if not results['ids']:
-                logger.warning("No documents found in the vector store")
+                if tenant_id:
+                    logger.warning(f"No documents found for tenant '{tenant_id}' in the vector store")
+                else:
+                    logger.warning("No documents found in the vector store")
                 return None
 
-            logger.info(f"Retrieved {len(results['ids'])} documents for analysis")
+            if tenant_id:
+                logger.info(f"Retrieved {len(results['ids'])} documents for tenant '{tenant_id}' for analysis")
+            else:
+                logger.info(f"Retrieved {len(results['ids'])} documents for analysis")
             return results
 
         except Exception as e:
@@ -160,10 +176,10 @@ class VectorDBInspector:
 
         logger.info("=" * 70)
 
-    def run_inspection(self, sample_size: int = 5, show_examples: bool = False, show_sample_docs: bool = False):
+    def run_inspection(self, sample_size: int = 5, show_examples: bool = False, show_sample_docs: bool = False, tenant_id: str = None):
         """Run the complete inspection process"""
         # Get document sample
-        documents = self.get_documents_sample(sample_size)
+        documents = self.get_documents_sample(sample_size, tenant_id)
         if not documents:
             return False
 
@@ -210,6 +226,12 @@ def main():
     )
 
     parser.add_argument(
+        '--tenant_id',
+        type=str,
+        help='Filter documents by specific tenant ID'
+    )
+
+    parser.add_argument(
         '--show_examples',
         action='store_true',
         help='Show example values for metadata fields'
@@ -239,7 +261,8 @@ def main():
         success = inspector.run_inspection(
             sample_size=args.sample_size,
             show_examples=args.show_examples,
-            show_sample_docs=args.show_sample_docs
+            show_sample_docs=args.show_sample_docs,
+            tenant_id=args.tenant_id
         )
 
         sys.exit(0 if success else 1)

@@ -186,3 +186,13 @@
 - Added comprehensive input validation, dry-run mode, batch processing, and verification features to ensure safe metadata migration
 - Created detailed README_vector_db_update.md with step-by-step instructions, examples, and troubleshooting guide for vector database migration
 - Scripts support command-line arguments for tenant_id, access_role, document_visibility with proper enum validation and error handling
+
+## Tenant ID Validation and Enhanced Vector DB Inspection
+- Fixed knowledge base status endpoint to properly validate tenant existence and return accurate document counts for specific tenants
+- Enhanced inspect_vector_db_metadata.py with --tenant_id argument to filter and analyze documents belonging to specific tenants
+- Updated services.py to return tenant-specific document counts instead of total collection count when tenant_id is provided
+
+## Critical Bug Fix: Tenant Metadata Loss During File Ingestion
+- Fixed critical metadata merging bug in data_ingestion.py where enhanced metadata (containing tenant_id, access_roles, document_visibility) was being overwritten by original metadata
+- Corrected metadata merge order in both ingest_file_with_feedback() and ingest_file_to_vectordb() functions to preserve tenant context
+- Now tenant metadata properly persists in ChromaDB, enabling proper multi-tenant document filtering and access control

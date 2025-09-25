@@ -255,11 +255,11 @@ def ingest_file_with_feedback(file_path: str, original_file_name: str = None, te
 
             # Preserve any existing metadata and merge with enhanced metadata
             original_metadata = chunk.metadata.copy()
-            enhanced_metadata.update(original_metadata)
+            original_metadata.update(enhanced_metadata)
 
             enhanced_chunk = Document(
                 page_content=chunk.page_content,
-                metadata=enhanced_metadata
+                metadata=original_metadata
             )
             enhanced_chunks.append(enhanced_chunk)
 
@@ -354,11 +354,11 @@ def ingest_file_to_vectordb(file_paths, tenant_id: str = "default", access_roles
 
                 # Preserve any existing metadata and merge with enhanced metadata
                 original_metadata = chunk.metadata.copy()
-                enhanced_metadata.update(original_metadata)
+                original_metadata.update(enhanced_metadata)
 
                 enhanced_chunk = Document(
                     page_content=chunk.page_content,
-                    metadata=enhanced_metadata
+                    metadata=original_metadata
                 )
                 enhanced_chunks.append(enhanced_chunk)
 
