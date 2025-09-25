@@ -131,35 +131,45 @@ def get_vector_store_status(tenant_id: str = None) -> Dict[str, Any]:
 
         if tenant_id:
             # Get tenant-specific document count
-            # Note: ChromaDB doesn't have direct count with filter, so we use get() with filter
+            # Note: ChromaDB doesn't have direct count with filter, so we get all tenant documents
             tenant_filter = {"tenant_id": tenant_id}
             try:
                 results = collection.get(
-                    where=tenant_filter,
-                    limit=1  # Just to check if any documents exist
+                    where=tenant_filter
                 )
-                # For actual count, we would need to get all and count (expensive for large collections)
-                # This is a basic implementation - could be optimized with direct collection queries
+                # Get actual count of tenant documents
                 tenant_doc_count = len(results['ids']) if results['ids'] else 0
                 has_tenant_docs = tenant_doc_count > 0
+
+                # For tenant-specific requests, return tenant document count as main count
+                status = {
+                    "status": "ready" if tenant_doc_count > 0 else "not_found",
+                    "document_count": tenant_doc_count,
+                    "collection_name": db_collection_name,
+                    "tenant_document_count": tenant_doc_count,
+                    "has_tenant_documents": has_tenant_docs
+                }
             except Exception as e:
                 logger.warning(f"Error getting tenant-specific count: {e}")
-                has_tenant_docs = False
-                tenant_doc_count = 0
+                # Return error status for tenant-specific requests
+                status = {
+                    "status": "error",
+                    "document_count": 0,
+                    "collection_name": db_collection_name,
+                    "tenant_document_count": 0,
+                    "has_tenant_documents": False,
+                    "error_message": f"Error accessing tenant data: {str(e)}"
+                }
         else:
-            has_tenant_docs = None
-            tenant_doc_count = None
-
-        # Get total collection count
-        total_count = collection.count()
-
-        status = {
-            "status": "ready" if total_count > 0 else "empty",
-            "document_count": total_count,
-            "collection_name": db_collection_name,
-            "tenant_document_count": tenant_doc_count,
-            "has_tenant_documents": has_tenant_docs
-        }
+            # Get total collection count for general requests
+            total_count = collection.count()
+            status = {
+                "status": "ready" if total_count > 0 else "empty",
+                "document_count": total_count,
+                "collection_name": db_collection_name,
+                "tenant_document_count": None,
+                "has_tenant_documents": None
+            }
 
         logger.info(f"Vector store status retrieved for tenant: {tenant_id}")
         return status

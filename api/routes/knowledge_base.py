@@ -230,9 +230,17 @@ async def get_kb_status_with_tenant(
         collection_name = vector_status.get("collection_name", "default_collection")
         error_message = vector_status.get("error_message") if status == "error" else None
 
+        # Validate tenant access based on whether documents exist for this tenant
+        # If status is "not_found", the tenant doesn't exist in the knowledge base
+        access_validated = status != "not_found" and status != "error"
+
+        # If tenant is not found, set appropriate error message
+        if status == "not_found":
+            error_message = f"Tenant '{tenant_id}' not found in knowledge base"
+
         return KBStatusResponseWithTenant(
             tenant_id=tenant_id,
-            access_validated=True,
+            access_validated=access_validated,
             status=status,
             document_count=document_count,
             collection_name=collection_name,
