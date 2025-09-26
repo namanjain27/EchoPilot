@@ -81,7 +81,7 @@ def render_data_ingestion_section():
     vector_status = get_vector_store_status()
     
     if vector_status["status"] == "ready":
-        st.info(f"📊 Vector store is ready with approximately {vector_status['approx_docs']} documents")
+        st.info(f"📊 Vector store is ready with approximately {vector_status['document_count']} documents")
     elif vector_status["status"] == "empty":
         st.warning("📭 Vector store is empty. Upload some files to get started!")
     else:
